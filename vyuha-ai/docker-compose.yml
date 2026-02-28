@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  vyuha:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - vyuha-data:/data
+    command:
+      - "./vyuha-ai"
+      - "--db-path"
+      - "/data/vyuha.db"
+      - "--port"
+      - "8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  vyuha-data:
