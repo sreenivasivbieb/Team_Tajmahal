@@ -84,7 +84,9 @@ export const api = {
 
   /** Trigger a codebase scan. */
   scan(rootPath: string): Promise<ScanResponse> {
-    return post<ScanResponse>('/scan', { root_path: rootPath });
+    // Normalize Windows backslashes to forward slashes for JSON safety
+    const normalized = rootPath.replace(/\\/g, '/');
+    return post<ScanResponse>('/scan', { root_path: normalized });
   },
 
   /** Poll scan job status. */
@@ -97,7 +99,7 @@ export const api = {
   /** List all service-level nodes. */
   async getServices(): Promise<GraphNode[]> {
     const res = await get<{ services: GraphNode[] }>('/graph/services');
-    return res.services ?? [];
+    return res?.services ?? [];
   },
 
   /** Get children subgraph for a parent node. */

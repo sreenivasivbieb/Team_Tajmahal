@@ -250,7 +250,7 @@ export function useGraph(): UseGraphReturn {
     setError(null);
     try {
       const services = await api.getServices();
-      const rfNodes = services.map(toReactFlowNode);
+      const rfNodes = (services ?? []).map(toReactFlowNode);
       const laid = applyDagreLayout(rfNodes, []);
       setNodes(laid);
       setEdges([]);
@@ -268,8 +268,8 @@ export function useGraph(): UseGraphReturn {
       setError(null);
       try {
         const result = await api.getChildren(nodeId, 1);
-        const newRfNodes = result.nodes.map(toReactFlowNode);
-        const newRfEdges = result.edges.map(toReactFlowEdge);
+        const newRfNodes = (result.nodes ?? []).map(toReactFlowNode);
+        const newRfEdges = (result.edges ?? []).map(toReactFlowEdge);
 
         // Merge: add new nodes/edges that don't already exist.
         setNodes((prev) => {
@@ -320,8 +320,8 @@ export function useGraph(): UseGraphReturn {
       setError(null);
       try {
         const result = await api.getSubgraph(targetId, queryType);
-        const rfNodes = result.nodes.map(toReactFlowNode);
-        const rfEdges = result.edges.map(toReactFlowEdge);
+        const rfNodes = (result.nodes ?? []).map(toReactFlowNode);
+        const rfEdges = (result.edges ?? []).map(toReactFlowEdge);
         const laid = applyDagreLayout(rfNodes, rfEdges);
         setNodes(laid);
         setEdges(rfEdges);

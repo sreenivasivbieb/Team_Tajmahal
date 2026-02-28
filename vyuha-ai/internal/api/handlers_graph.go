@@ -74,6 +74,26 @@ func (s *Server) handleGraphChildren(w http.ResponseWriter, r *http.Request) {
 		nodes = s.index.GetDescendants(parentID, depth)
 	}
 
+	// For service nodes, also include descendants from the corresponding
+	// package node. The parser creates service: and pkg: nodes as siblings
+	// under the repo; functions live under pkg → file → func.
+	if strings.HasPrefix(parentID, "service:") {
+		pkgID := "pkg:" + strings.TrimPrefix(parentID, "service:")
+		if _, ok := s.index.GetNode(pkgID); ok {
+			pkgDescendants := s.index.GetDescendants(pkgID, 4)
+			seen := make(map[string]bool, len(nodes))
+			for _, n := range nodes {
+				seen[n.ID] = true
+			}
+			for _, n := range pkgDescendants {
+				if !seen[n.ID] {
+					nodes = append(nodes, n)
+					seen[n.ID] = true
+				}
+			}
+		}
+	}
+
 	// Collect node IDs for edge lookup.
 	nodeIDs := make([]string, 0, len(nodes)+1)
 	nodeIDs = append(nodeIDs, parentID)
@@ -184,6 +204,25 @@ func (s *Server) handleGraphNode(w http.ResponseWriter, r *http.Request) {
 
 	// Direct children.
 	children := s.index.GetChildren(nodeID)
+
+	// For service nodes, also include descendants from the corresponding
+	// package node so the detail view shows functions.
+	if node.Type == graph.NodeTypeService {
+		pkgID := "pkg:" + strings.TrimPrefix(nodeID, "service:")
+		if _, ok := s.index.GetNode(pkgID); ok {
+			pkgDescendants := s.index.GetDescendants(pkgID, 4)
+			seen := make(map[string]bool, len(children))
+			for _, n := range children {
+				seen[n.ID] = true
+			}
+			for _, n := range pkgDescendants {
+				if !seen[n.ID] {
+					children = append(children, n)
+					seen[n.ID] = true
+				}
+			}
+		}
+	}
 
 	// In-edges (who calls/targets this).
 	inEdges := s.index.GetInEdges(nodeID)

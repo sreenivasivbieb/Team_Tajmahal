@@ -2,12 +2,13 @@
 // App.tsx — Main application shell
 // ---------------------------------------------------------------------------
 
-import { useCallback, useEffect, useState, type FC } from 'react';
+import { useCallback, useEffect, useRef, useState, type FC } from 'react';
 import GraphCanvas from './components/GraphCanvas';
 import StatusBar from './components/StatusBar';
 import QueryBar from './components/panels/QueryBar';
 import AgentPanel from './components/panels/AgentPanel';
 import LogIngestion from './components/panels/LogIngestion';
+import ScanSetup from './components/ScanSetup';
 import { useGraph } from './hooks/useGraph';
 import { useSSE } from './hooks/useSSE';
 import { useAgent } from './hooks/useAgent';
@@ -23,12 +24,27 @@ const App: FC = () => {
   const [showAgent, setShowAgent] = useState(false);
   const [showIngestion, setShowIngestion] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const rootPathRef = useRef<string>(localStorage.getItem('vyuha_root_path') || '');
 
-  // Load services on mount
+  // Load services on mount — if none found, show setup modal
   useEffect(() => {
-    graph.loadServices();
+    graph.loadServices().then(() => {
+      // Check after a tick so state has settled
+      setTimeout(() => {
+        // We'll check in a separate effect
+      }, 200);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Show setup if graph has 0 nodes and we haven't scanned yet
+  useEffect(() => {
+    if (!isScanning && graph.nodes.length === 0 && !rootPathRef.current) {
+      setNeedsSetup(true);
+    }
+  }, [graph.nodes.length, isScanning]);
 
   // Handle query result from QueryBar
   const handleQueryResult = useCallback(
@@ -99,17 +115,78 @@ const App: FC = () => {
     [graph],
   );
 
-  // Rescan handler
-  const handleRescan = useCallback(async () => {
+  // Poll scan job until complete, then reload services
+  const pollScanJob = useCallback(async (jobId: string) => {
+    let attempts = 0;
+    const poll = async () => {
+      attempts++;
+      try {
+        const status = await api.getScanStatus(jobId);
+        if (!status) {
+          // Null response — scan may have completed before first poll
+          setIsScanning(false);
+          setNeedsSetup(false);
+          graph.loadServices();
+          return;
+        }
+        if (status.status === 'complete' || status.status === 'completed') {
+          setIsScanning(false);
+          setNeedsSetup(false);
+          graph.loadServices();
+        } else if (status.status === 'failed' || status.status === 'error') {
+          setIsScanning(false);
+          setScanError(status.error || 'Scan failed');
+        } else {
+          // still scanning — poll again (max 60 attempts)
+          if (attempts < 60) setTimeout(poll, 1000);
+          else {
+            setIsScanning(false);
+            graph.loadServices();
+          }
+        }
+      } catch {
+        // Scan job may have expired — assume success and reload
+        setIsScanning(false);
+        setNeedsSetup(false);
+        graph.loadServices();
+      }
+    };
+    setTimeout(poll, 1000);
+  }, [graph]);
+
+  // Scan a given path (used by setup modal and rescan)
+  const doScan = useCallback(async (rootPath: string) => {
     setScanError(null);
+    setIsScanning(true);
     try {
-      await api.scan('.');
-      // Reload services after scan completes
-      setTimeout(() => graph.loadServices(), 1000);
+      const res = await api.scan(rootPath);
+      rootPathRef.current = rootPath;
+      localStorage.setItem('vyuha_root_path', rootPath);
+      if (res.job_id) {
+        pollScanJob(res.job_id);
+      } else {
+        // No job_id — assume instant completion
+        setTimeout(() => {
+          setIsScanning(false);
+          setNeedsSetup(false);
+          graph.loadServices();
+        }, 1500);
+      }
     } catch (e) {
+      setIsScanning(false);
       setScanError(e instanceof Error ? e.message : String(e));
     }
-  }, [graph]);
+  }, [graph, pollScanJob]);
+
+  // Rescan handler — reuses saved path or prompts setup
+  const handleRescan = useCallback(async () => {
+    const saved = rootPathRef.current;
+    if (saved) {
+      doScan(saved);
+    } else {
+      setNeedsSetup(true);
+    }
+  }, [doScan]);
 
   // Navigate to node from agent panel
   const handleAgentNodeClick = useCallback(
@@ -173,6 +250,15 @@ const App: FC = () => {
 
       {/* Log ingestion modal */}
       {showIngestion && <LogIngestion onClose={() => setShowIngestion(false)} />}
+
+      {/* Initial setup modal */}
+      {needsSetup && (
+        <ScanSetup
+          onScan={doScan}
+          isScanning={isScanning}
+          error={scanError}
+        />
+      )}
 
       {/* Status bar */}
       <StatusBar
