@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/vyuha/vyuha-ai/internal/graph"
 	"github.com/vyuha/vyuha-ai/internal/storage"
@@ -135,8 +136,19 @@ func (x *SubgraphExtractor) Extract(ctx context.Context, q SubgraphQuery) (*Subg
 // =========================================================================
 
 func (x *SubgraphExtractor) serviceOverview(ctx context.Context, target *graph.Node, q *SubgraphQuery) (*SubgraphResult, error) {
+	// Resolve the lookup ID: for service: nodes, also include pkg: descendants.
+	lookupID := target.ID
+	var pkgID string
+	if strings.HasPrefix(target.ID, "service:") {
+		pkgID = "pkg:" + strings.TrimPrefix(target.ID, "service:")
+	}
+
 	// 1. Entry points.
-	entryPoints := x.index.FindEntryPoints(target.ID)
+	entryPoints := x.index.FindEntryPoints(lookupID)
+	if pkgID != "" {
+		pkgEntries := x.index.FindEntryPoints(pkgID)
+		entryPoints = append(entryPoints, pkgEntries...)
+	}
 	entrySet := idSet(entryPoints)
 
 	// 2. BFS from entry points.
@@ -153,6 +165,13 @@ func (x *SubgraphExtractor) serviceOverview(ctx context.Context, target *graph.N
 	descendants := x.index.GetDescendants(target.ID, 2)
 	for _, n := range descendants {
 		reachable[n.ID] = n
+	}
+	// For service: nodes, also include descendants from the pkg: node.
+	if pkgID != "" {
+		pkgDescendants := x.index.GetDescendants(pkgID, 2)
+		for _, n := range pkgDescendants {
+			reachable[n.ID] = n
+		}
 	}
 
 	// 3. Score all reachable nodes.
@@ -201,6 +220,10 @@ func (x *SubgraphExtractor) serviceOverview(ctx context.Context, target *graph.N
 
 	// 6. Add edges to immediate external dependencies.
 	extDeps := x.index.GetExternalDependencies(target.ID)
+	if pkgID != "" {
+		pkgDeps := x.index.GetExternalDependencies(pkgID)
+		extDeps = append(extDeps, pkgDeps...)
+	}
 	for _, dep := range extDeps {
 		if len(selected) < q.MaxNodes+10 { // small overflow budget for deps
 			selected[dep.ID] = dep
