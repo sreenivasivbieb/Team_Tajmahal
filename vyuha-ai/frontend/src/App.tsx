@@ -27,6 +27,7 @@ const App: FC = () => {
   const [scanError, setScanError] = useState<string | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [navigateToNodeId, setNavigateToNodeId] = useState<string | null>(null);
   const rootPathRef = useRef<string>(localStorage.getItem('vyuha_root_path') || '');
 
   // Load services on mount — if none found, show setup modal
@@ -219,14 +220,10 @@ const App: FC = () => {
   // Navigate to node from agent panel
   const handleAgentNodeClick = useCallback(
     (nodeId: string) => {
-      // Find the node on the canvas and select it
-      const found = graph.nodes.find((n) => n.id === nodeId);
-      if (found) {
-        // close agent panel and let the canvas handle focus
-        setShowAgent(false);
-      }
+      setShowAgent(false);
+      setNavigateToNodeId(nodeId);
     },
-    [graph.nodes],
+    [],
   );
 
   return (
@@ -259,7 +256,12 @@ const App: FC = () => {
 
       {/* Main area */}
       <div className="relative flex-1 overflow-hidden">
-        <GraphCanvas graph={graph} sse={sse} />
+        <GraphCanvas
+          graph={graph}
+          sse={sse}
+          navigateToNodeId={navigateToNodeId}
+          onNavigationComplete={() => setNavigateToNodeId(null)}
+        />
 
         {/* Agent panel (left) */}
         {showAgent && (

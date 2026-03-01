@@ -12,6 +12,7 @@ import ReactFlow, {
   type NodeMouseHandler,
   useNodesState,
   useEdgesState,
+  useReactFlow,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -42,6 +43,8 @@ import { api } from '../api/client';
 interface GraphCanvasProps {
   graph: UseGraphReturn;
   sse: UseSSEReturn;
+  navigateToNodeId?: string | null;
+  onNavigationComplete?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -279,7 +282,12 @@ const EdgeLegend: FC = () => {                                                  
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-const GraphCanvas: FC<GraphCanvasProps> = ({ graph, sse }) => {
+const GraphCanvas: FC<GraphCanvasProps> = ({
+  graph,
+  sse,
+  navigateToNodeId = null,
+  onNavigationComplete,
+}) => {
   // Memoised so React Flow never sees a fresh object reference (fixes #002 warning)
   const nodeTypes = useMemo(
     () => ({
@@ -297,6 +305,7 @@ const GraphCanvas: FC<GraphCanvasProps> = ({ graph, sse }) => {
     [],
   );
   const edgeTypes = useMemo(() => ({ bundled: BundledEdge }), []);                 // BUNDLE
+  const { setCenter, getNode } = useReactFlow();
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(graph.nodes);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(graph.edges);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -337,6 +346,27 @@ const GraphCanvas: FC<GraphCanvasProps> = ({ graph, sse }) => {
       graph.updateNodeStatus(nodeId, status);
     });
   }, [sse.nodeStatusUpdates, graph]);
+
+  // Navigate to a node when triggered from AgentPanel
+  useEffect(() => {
+    if (!navigateToNodeId || !onNavigationComplete) return;
+
+    const timer = setTimeout(() => {
+      const rfNode = getNode(navigateToNodeId);
+      if (rfNode) {
+        setCenter(
+          rfNode.position.x + (rfNode.width ?? 150) / 2,
+          rfNode.position.y + (rfNode.height ?? 50) / 2,
+          { zoom: 1.2, duration: 600 },
+        );
+        // Open the detail panel for this node
+        setSelectedNode(rfNode.data as GraphNode);
+      }
+      onNavigationComplete();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [navigateToNodeId, onNavigationComplete, setCenter, getNode]);
 
   // Node click → toggle focus + open detail panel                                 // FOCUS MODE
   const onNodeClick: NodeMouseHandler = useCallback((_event, node: RFNode) => {
