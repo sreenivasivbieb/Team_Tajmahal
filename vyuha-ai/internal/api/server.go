@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/vyuha/vyuha-ai/internal/ai"
+	"github.com/vyuha/vyuha-ai/internal/demo"
 	"github.com/vyuha/vyuha-ai/internal/graph"
 	"github.com/vyuha/vyuha-ai/internal/query"
 	rt "github.com/vyuha/vyuha-ai/internal/runtime"
@@ -98,6 +99,9 @@ func (s *Server) RegisterRoutes() {
 
 	// -- SSE event stream -------------------------------------------------
 	s.mux.HandleFunc("GET /api/events", s.handleSSE)
+
+	// -- Demo data --------------------------------------------------------
+	s.mux.HandleFunc("POST /api/demo/load", s.handleLoadDemo)
 
 	// -- Health check -----------------------------------------------------
 	s.mux.HandleFunc("GET /health", s.handleHealth)
@@ -193,6 +197,39 @@ func (s *Server) Shutdown(ctx interface{ Deadline() (time.Time, bool); Done() <-
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
+
+func (s *Server) handleLoadDemo(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Check if data already exists
+	stats := s.index.Stats()
+	if stats.TotalNodes > 0 {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"data": map[string]interface{}{
+				"message": "Demo data already loaded",
+				"nodes":   stats.TotalNodes,
+				"edges":   stats.TotalEdges,
+			},
+		})
+		return
+	}
+
+	if err := demo.SeedDemoGraph(ctx, s.store, s.index); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"error": fmt.Sprintf("failed to load demo data: %v", err),
+		})
+		return
+	}
+
+	newStats := s.index.Stats()
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"data": map[string]interface{}{
+			"message": "Demo data loaded successfully",
+			"nodes":   newStats.TotalNodes,
+			"edges":   newStats.TotalEdges,
+		},
+	})
+}
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")

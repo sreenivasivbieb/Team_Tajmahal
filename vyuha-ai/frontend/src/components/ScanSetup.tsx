@@ -6,11 +6,12 @@ import { useState, type FC } from 'react';
 
 interface ScanSetupProps {
   onScan: (rootPath: string) => void;
+  onLoadDemo?: () => void;
   isScanning: boolean;
   error: string | null;
 }
 
-const ScanSetup: FC<ScanSetupProps> = ({ onScan, isScanning, error }) => {
+const ScanSetup: FC<ScanSetupProps> = ({ onScan, onLoadDemo, isScanning, error }) => {
   const [path, setPath] = useState('');
 
   const handleSubmit = () => {
@@ -62,6 +63,25 @@ const ScanSetup: FC<ScanSetupProps> = ({ onScan, isScanning, error }) => {
               {error}
             </div>
           )}
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-4">
+            <div className="h-px flex-1 bg-gray-700" />
+            <span className="text-xs text-gray-500">or</span>
+            <div className="h-px flex-1 bg-gray-700" />
+          </div>
+
+          {/* Demo button */}
+          <button
+            onClick={onLoadDemo}
+            disabled={isScanning}
+            className="w-full rounded-lg border border-purple-600/50 bg-purple-900/30 px-4 py-2.5 text-sm font-medium text-purple-200 transition-colors hover:bg-purple-800/40 disabled:opacity-50"
+          >
+            🚀 Load Demo Project
+          </button>
+          <p className="mt-1.5 text-center text-[11px] text-gray-500">
+            Explore a pre-built microservice graph without scanning a local repository
+          </p>
         </div>
 
         {/* Footer */}

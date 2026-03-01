@@ -228,6 +228,23 @@ const App: FC = () => {
     [],
   );
 
+  // Load demo data handler
+  const handleLoadDemo = useCallback(async () => {
+    setScanError(null);
+    setIsScanning(true);
+    try {
+      await api.loadDemo();
+      setIsScanning(false);
+      setNeedsSetup(false);
+      rootPathRef.current = '__demo__';
+      localStorage.setItem('vyuha_root_path', '__demo__');
+      graph.loadServices();
+    } catch (e) {
+      setIsScanning(false);
+      setScanError(e instanceof Error ? e.message : String(e));
+    }
+  }, [graph]);
+
   // Navigate to node from agent panel
   const handleAgentNodeClick = useCallback(
     (nodeId: string) => {
@@ -335,6 +352,7 @@ const App: FC = () => {
       {needsSetup && (
         <ScanSetup
           onScan={doScan}
+          onLoadDemo={handleLoadDemo}
           isScanning={isScanning}
           error={scanError}
         />

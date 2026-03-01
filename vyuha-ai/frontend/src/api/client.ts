@@ -197,6 +197,11 @@ export const api = {
 
   // ---- AI / Query ---------------------------------------------------------
 
+  /** Load demo data (no repository path needed). */
+  loadDemo(): Promise<{ message: string; nodes: number; edges: number }> {
+    return post<{ message: string; nodes: number; edges: number }>('/demo/load', {});
+  },
+
   /** Ask a natural-language question about the codebase. */
   askQuestion(question: string): Promise<QueryDecision> {
     return post<QueryDecision>('/ai/query', { question });
