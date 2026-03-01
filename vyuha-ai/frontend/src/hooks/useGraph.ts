@@ -77,13 +77,13 @@ function getImportanceThreshold(zoom: number): number {    // CHANGED
 
 export interface GraphFilters {
   statuses: Set<string>; // 'healthy' | 'degraded' | 'error' | 'unknown'
-  types: Set<string>;    // 'service' | 'function' | 'struct' | 'interface' | 'cloud_service' | 'data_flow'
+  types: Set<string>;    // 'service' | 'package' | 'file' | 'function' | 'struct' | 'interface' | 'cloud_service' | 'data_flow'
   quickFilter: 'none' | 'failing' | 'cloud-deps' | 'entry-points';
 }
 
 export const DEFAULT_FILTERS: GraphFilters = {
   statuses: new Set(['healthy', 'degraded', 'error', 'unknown']),
-  types: new Set(['service', 'function', 'struct', 'interface', 'cloud_service', 'data_flow']),
+  types: new Set(['service', 'package', 'file', 'function', 'struct', 'interface', 'cloud_service', 'data_flow']),
   quickFilter: 'none',
 };
 

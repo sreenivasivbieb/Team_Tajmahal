@@ -74,6 +74,8 @@ const STATUS_OPTIONS = [
 
 const TYPE_OPTIONS = [
   { key: 'service', label: 'Service' },
+  { key: 'package', label: 'Package' },
+  { key: 'file', label: 'File' },
   { key: 'function', label: 'Function' },
   { key: 'struct', label: 'Struct' },
   { key: 'interface', label: 'Interface' },
