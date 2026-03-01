@@ -276,6 +276,8 @@ export interface NodeDetail {
   node: GraphNode;
   callers: GraphNode[];
   callees: GraphNode[];
+  in_edges?: GraphEdge[];   // raw in-edges for edge-type display
+  out_edges?: GraphEdge[];  // raw out-edges for edge-type display
   data_flow?: DataFlowRecord[];
   recent_events?: RuntimeEvent[];
 }

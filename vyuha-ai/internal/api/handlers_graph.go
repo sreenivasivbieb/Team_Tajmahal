@@ -305,6 +305,10 @@ func (s *Server) handleGraphNode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Callers (who calls this node) and callees (what this node calls).
+	callers := s.index.GetCallers(nodeID)
+	callees := s.index.GetCallees(nodeID)
+
 	// Recent runtime events (last 10).
 	ctx := r.Context()
 	events, _ := s.store.GetRecentEvents(ctx, nodeID, 10)
@@ -315,6 +319,8 @@ func (s *Server) handleGraphNode(w http.ResponseWriter, r *http.Request) {
 			"children":  children,
 			"in_edges":  inEdges,
 			"out_edges": outEdges,
+			"callers":   callers,
+			"callees":   callees,
 			"data_flow": dataFlow,
 			"events":    events,
 		},

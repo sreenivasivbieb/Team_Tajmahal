@@ -125,13 +125,17 @@ export const api = {
       children: GraphNode[];
       in_edges: GraphEdge[];
       out_edges: GraphEdge[];
+      callers: GraphNode[];
+      callees: GraphNode[];
       data_flow?: DataFlowRecord[];
       events?: RuntimeEvent[];
     }>(`/graph/node/${encodeURIComponent(id)}`);
     return {
       node: raw.node,
-      callers: raw.children ?? [],
-      callees: raw.children ?? [],
+      callers: raw.callers ?? [],
+      callees: raw.callees ?? [],
+      in_edges: raw.in_edges,
+      out_edges: raw.out_edges,
       data_flow: raw.data_flow,
       recent_events: raw.events,
     };
