@@ -13,7 +13,8 @@ import { useGraph } from './hooks/useGraph';
 import { useSSE } from './hooks/useSSE';
 import { useAgent } from './hooks/useAgent';
 import { api } from './api/client';
-import type { QueryDecision } from './types/graph';
+import type { QueryDecision, GraphNode } from './types/graph';
+import Breadcrumbs from './components/Breadcrumbs';
 import { applyDagreLayout } from './hooks/useGraph';
 import { nodeTypeToRF } from './utils/nodeMapping';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -29,6 +30,7 @@ const App: FC = () => {
   const [needsSetup, setNeedsSetup] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [navigateToNodeId, setNavigateToNodeId] = useState<string | null>(null);
+  const [breadcrumbNode, setBreadcrumbNode] = useState<GraphNode | null>(null);
   const rootPathRef = useRef<string>(localStorage.getItem('vyuha_root_path') || '');
 
   // Load services on mount — if none found, show setup modal
@@ -218,6 +220,14 @@ const App: FC = () => {
     }
   }, [doScan]);
 
+  // Breadcrumb navigation handler
+  const handleBreadcrumbNavigate = useCallback(
+    (nodeId: string) => {
+      setNavigateToNodeId(nodeId);
+    },
+    [],
+  );
+
   // Navigate to node from agent panel
   const handleAgentNodeClick = useCallback(
     (nodeId: string) => {
@@ -290,6 +300,9 @@ const App: FC = () => {
       {/* Query bar */}
       <QueryBar onResult={handleQueryResult} isRunning={agent.isRunning} />
 
+      {/* Breadcrumb navigation */}
+      <Breadcrumbs currentNode={breadcrumbNode} onNavigate={handleBreadcrumbNavigate} />
+
       {/* Main area */}
       <div className="relative flex-1 overflow-hidden">
         <GraphCanvas
@@ -297,6 +310,7 @@ const App: FC = () => {
           sse={sse}
           navigateToNodeId={navigateToNodeId}
           onNavigationComplete={() => setNavigateToNodeId(null)}
+          onNodeSelect={setBreadcrumbNode}
         />
 
         {/* Agent panel (left) */}

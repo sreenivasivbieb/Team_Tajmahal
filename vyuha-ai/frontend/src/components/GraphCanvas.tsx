@@ -48,6 +48,7 @@ interface GraphCanvasProps {
   sse: UseSSEReturn;
   navigateToNodeId?: string | null;
   onNavigationComplete?: () => void;
+  onNodeSelect?: (node: GraphNode | null) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -292,6 +293,7 @@ const GraphCanvas: FC<GraphCanvasProps> = ({
   sse,
   navigateToNodeId = null,
   onNavigationComplete,
+  onNodeSelect,
 }) => {
   // Memoised so React Flow never sees a fresh object reference (fixes #002 warning)
   const nodeTypes = useMemo(
@@ -366,6 +368,7 @@ const GraphCanvas: FC<GraphCanvasProps> = ({
         );
         // Open the detail panel for this node
         setSelectedNode(rfNode.data as GraphNode);
+        if (onNodeSelect) onNodeSelect(rfNode.data as GraphNode);
       }
       onNavigationComplete();
     }, 300);
@@ -386,13 +389,15 @@ const GraphCanvas: FC<GraphCanvasProps> = ({
   const onNodeClick: NodeMouseHandler = useCallback((_event, node: RFNode) => {
     setFocusedNodeId(prev => prev === node.id ? null : node.id);                    // FOCUS MODE
     setSelectedNode(node.data as GraphNode);
-  }, [setFocusedNodeId]);
+    if (onNodeSelect) onNodeSelect(node.data as GraphNode);
+  }, [setFocusedNodeId, onNodeSelect]);
 
   // Background click → clear focus + close panel                                   // FOCUS MODE
   const onPaneClick = useCallback(() => {
     setFocusedNodeId(null);                                                         // FOCUS MODE
     setSelectedNode(null);
-  }, [setFocusedNodeId]);
+    if (onNodeSelect) onNodeSelect(null);
+  }, [setFocusedNodeId, onNodeSelect]);
 
   // Navigate from detail panel to another node
   const handleNavigate = useCallback(
@@ -668,7 +673,10 @@ const GraphCanvas: FC<GraphCanvasProps> = ({
       {selectedNode && (
         <DetailPanel
           node={selectedNode}
-          onClose={() => setSelectedNode(null)}
+          onClose={() => {
+            setSelectedNode(null);
+            if (onNodeSelect) onNodeSelect(null);
+          }}
           onNavigate={handleNavigate}
           onNodeHighlight={(nodeId) => {
             // Briefly pulse the referenced node on the canvas
