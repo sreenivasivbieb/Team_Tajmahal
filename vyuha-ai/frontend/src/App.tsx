@@ -1,65 +1,60 @@
 // ---------------------------------------------------------------------------
-// App.tsx — Main application shell
+// App.tsx — Main application shell (refactored with context providers)
 // ---------------------------------------------------------------------------
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
+import { useCallback, useEffect, useMemo, type FC } from 'react';
 import GraphCanvas from './components/GraphCanvas';
 import StatusBar from './components/StatusBar';
 import QueryBar from './components/panels/QueryBar';
 import AgentPanel from './components/panels/AgentPanel';
 import LogIngestion from './components/panels/LogIngestion';
 import ScanSetup from './components/ScanSetup';
+import Breadcrumbs from './components/Breadcrumbs';
+import ScanDiffBanner from './components/ScanDiffBanner';
 import { useGraph } from './hooks/useGraph';
 import { useSSE } from './hooks/useSSE';
 import { useAgent } from './hooks/useAgent';
-import { api } from './api/client';
-import type { QueryDecision, GraphNode } from './types/graph';
-import Breadcrumbs from './components/Breadcrumbs';
-import ScanDiffBanner, { type ScanDiff } from './components/ScanDiffBanner';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import {
+  ScanProvider,
+  useScan,
+  PanelProvider,
+  usePanels,
+  NavigationProvider,
+  useNavigation,
+} from './context';
 import { applyDagreLayout } from './hooks/useGraph';
 import { nodeTypeToRF } from './utils/nodeMapping';
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import type { QueryDecision } from './types/graph';
+import type { UseGraphReturn } from './hooks/useGraph';
+import type { UseSSEReturn } from './hooks/useSSE';
 
-const App: FC = () => {
-  const graph = useGraph();
-  const sse = useSSE();
+// ---------------------------------------------------------------------------
+// AppInnerWrapper — consumes all contexts, holds main logic
+// ---------------------------------------------------------------------------
+
+interface AppInnerWrapperProps {
+  graph: UseGraphReturn;
+  sse: UseSSEReturn;
+}
+
+const AppInnerWrapper: FC<AppInnerWrapperProps> = ({ graph, sse }) => {
   const agent = useAgent();
+  const scan = useScan();
+  const panels = usePanels();
+  const nav = useNavigation();
 
-  const [showAgent, setShowAgent] = useState(false);
-  const [showIngestion, setShowIngestion] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
-  const [needsSetup, setNeedsSetup] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
-  const [navigateToNodeId, setNavigateToNodeId] = useState<string | null>(null);
-  const [breadcrumbNode, setBreadcrumbNode] = useState<GraphNode | null>(null);
-  const [scanDiff, setScanDiff] = useState<ScanDiff | null>(null);
-  const rootPathRef = useRef<string>(localStorage.getItem('vyuha_root_path') || '');
-  const preRescanCounts = useRef<{ nodes: number; edges: number } | null>(null);
-
-  // Load services on mount — if none found, show setup modal
+  // Load services on mount
   useEffect(() => {
-    graph.loadServices().then(() => {
-      // Check after a tick so state has settled
-      setTimeout(() => {
-        // We'll check in a separate effect
-      }, 200);
-    });
+    graph.loadServices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Show setup if graph has 0 nodes and we haven't scanned yet
-  useEffect(() => {
-    if (!isScanning && graph.nodes.length === 0 && !rootPathRef.current) {
-      setNeedsSetup(true);
-    }
-  }, [graph.nodes.length, isScanning]);
 
   // Handle query result from QueryBar
   const handleQueryResult = useCallback(
     (result: QueryDecision, question: string) => {
       switch (result.mode) {
         case 'subgraph': {
-          // Display the returned subgraph on the canvas
           if (result.subgraph) {
             const { nodes: subNodes, edges: subEdges } = result.subgraph;
             const rfNodes = subNodes.map((n) => ({
@@ -75,25 +70,21 @@ const App: FC = () => {
               label: e.type,
               animated: e.type === 'calls' || e.type === 'runtime_calls',
             }));
-            const laid = applyDagreLayout(rfNodes, rfEdges, { rankByType: true }); // LAYOUT
-            graph.setNodesAndEdges(laid.nodes, laid.edges);                      // LAYOUT
+            const laid = applyDagreLayout(rfNodes, rfEdges, { rankByType: true });
+            graph.setNodesAndEdges(laid.nodes, laid.edges);
           } else if (result.target_id && result.subgraph_type) {
             graph.loadSubgraph(result.target_id, result.subgraph_type);
           }
           break;
         }
-
         case 'agent': {
-          // Open agent panel
-          setShowAgent(true);
+          panels.openAgentPanel();
           if (!result.agent_run && !result.answer) {
             agent.ask(question);
           }
           break;
         }
-
         case 'direct_graph': {
-          // Display graph_data if present
           if (result.graph_data?.nodes) {
             const rfNodes = result.graph_data.nodes.map((n) => ({
               id: n.id,
@@ -108,180 +99,32 @@ const App: FC = () => {
               label: e.type,
               animated: false,
             }));
-            const laid = applyDagreLayout(rfNodes, rfEdges, { rankByType: true }); // LAYOUT
-            graph.setNodesAndEdges(laid.nodes, laid.edges);                      // LAYOUT
+            const laid = applyDagreLayout(rfNodes, rfEdges, { rankByType: true });
+            graph.setNodesAndEdges(laid.nodes, laid.edges);
           }
           break;
         }
-
         case 'sql':
         default:
-          // For direct answer modes, show agent panel with the answer
           if (result.answer) {
-            setShowAgent(true);
+            panels.openAgentPanel();
           }
           break;
       }
     },
-    [graph, agent],
+    [graph, agent, panels],
   );
 
-  // Compute diff between pre-rescan counts and current graph
-  const computeScanDiff = useCallback(() => {
-    const pre = preRescanCounts.current;
-    if (!pre) return;
-    const curNodes = graph.nodes.length;
-    const curEdges = graph.edges.length;
-    const nodesAdded = Math.max(0, curNodes - pre.nodes);
-    const nodesRemoved = Math.max(0, pre.nodes - curNodes);
-    const edgesAdded = Math.max(0, curEdges - pre.edges);
-    const edgesRemoved = Math.max(0, pre.edges - curEdges);
-    setScanDiff({
-      nodesAdded,
-      nodesRemoved,
-      nodesModified: 0,
-      edgesAdded,
-      edgesRemoved,
-      totalNodes: curNodes,
-      totalEdges: curEdges,
-    });
-    preRescanCounts.current = null;
-  }, [graph.nodes.length, graph.edges.length]);
-
-  // Poll scan job until complete, then reload services
-  const pollScanJob = useCallback(
-    async (jobId: string) => {
-      let attempts = 0;
-      let networkFailures = 0;
-
-      const poll = async () => {
-        attempts++;
-        try {
-          const status = await api.getScanStatus(jobId);
-          networkFailures = 0;
-
-          if (!status) {
-            setIsScanning(false);
-            setNeedsSetup(false);
-            graph.loadServices();
-            return;
-          }
-          if (status.status === 'complete' || status.status === 'completed') {
-            setIsScanning(false);
-            setNeedsSetup(false);
-            graph.loadServices().then(() => setTimeout(computeScanDiff, 1500));
-          } else if (status.status === 'failed' || status.status === 'error') {
-            setIsScanning(false);
-            setScanError(status.error || 'Scan failed');
-          } else {
-            if (attempts < 120) {
-              setTimeout(poll, 1000);
-            } else {
-              setIsScanning(false);
-              setScanError(
-                'Scan timed out after 2 minutes. The scan may still be running — try refreshing.',
-              );
-            }
-          }
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-
-          if (msg.includes('404') || msg.includes('not found')) {
-            setIsScanning(false);
-            setNeedsSetup(false);
-            graph.loadServices();
-            return;
-          }
-
-          networkFailures++;
-          if (networkFailures < 3 && attempts < 120) {
-            setTimeout(poll, 2000 * networkFailures);
-          } else {
-            setIsScanning(false);
-            setScanError(
-              `Lost connection while scanning: ${msg}. Try rescanning.`,
-            );
-          }
-        }
-      };
-
-      setTimeout(poll, 1000);
-    },
-    [graph, computeScanDiff],
-  );
-
-
-  // Scan a given path (used by setup modal and rescan)
-  const doScan = useCallback(async (rootPath: string) => {
-    preRescanCounts.current = { nodes: graph.nodes.length, edges: graph.edges.length };
-    setScanDiff(null);
-    setScanError(null);
-    setIsScanning(true);
-    try {
-      const res = await api.scan(rootPath);
-      rootPathRef.current = rootPath;
-      localStorage.setItem('vyuha_root_path', rootPath);
-      if (res.job_id) {
-        pollScanJob(res.job_id);
-      } else {
-        // No job_id — assume instant completion
-        setTimeout(() => {
-          setIsScanning(false);
-          setNeedsSetup(false);
-          graph.loadServices().then(() => setTimeout(computeScanDiff, 1500));
-        }, 1500);
-      }
-    } catch (e) {
-      setIsScanning(false);
-      setScanError(e instanceof Error ? e.message : String(e));
-    }
-  }, [graph, pollScanJob, computeScanDiff]);
-
-  // Rescan handler — reuses saved path or prompts setup
-  const handleRescan = useCallback(async () => {
-    const saved = rootPathRef.current;
-    if (saved) {
-      doScan(saved);
-    } else {
-      setNeedsSetup(true);
-    }
-  }, [doScan]);
-
-  // Breadcrumb navigation handler
-  const handleBreadcrumbNavigate = useCallback(
-    (nodeId: string) => {
-      setNavigateToNodeId(nodeId);
-    },
-    [],
-  );
-
-  // Load demo data handler
-  const handleLoadDemo = useCallback(async () => {
-    setScanError(null);
-    setIsScanning(true);
-    try {
-      await api.loadDemo();
-      setIsScanning(false);
-      setNeedsSetup(false);
-      rootPathRef.current = '__demo__';
-      localStorage.setItem('vyuha_root_path', '__demo__');
-      graph.loadServices();
-    } catch (e) {
-      setIsScanning(false);
-      setScanError(e instanceof Error ? e.message : String(e));
-    }
-  }, [graph]);
-
-  // Navigate to node from agent panel
+  // Agent panel node click → navigate canvas
   const handleAgentNodeClick = useCallback(
     (nodeId: string) => {
-      setShowAgent(false);
-      setNavigateToNodeId(nodeId);
+      panels.closeAgentPanel();
+      nav.navigateTo(nodeId);
     },
-    [],
+    [panels, nav],
   );
 
-  // Keyboard shortcut handlers
+  // Keyboard shortcuts
   const shortcutHandlers = useMemo(
     () => ({
       onFocusQueryBar: () => {
@@ -291,55 +134,32 @@ const App: FC = () => {
           (input as HTMLInputElement).select();
         }
       },
-      onClosePanel: () => {
-        if (showAgent) {
-          setShowAgent(false);
-          sse.clearAgentSteps();
-        } else if (showIngestion) {
-          setShowIngestion(false);
-        } else if (needsSetup && !isScanning) {
-          setNeedsSetup(false);
-        }
-      },
-      onRescan: () => {
-        const saved = rootPathRef.current;
-        if (saved && !isScanning) {
-          doScan(saved);
-        }
-      },
-      onFitView: () => {
-        window.dispatchEvent(new CustomEvent('vyuha-fit-view'));
-      },
+      onClosePanel: () => panels.closeTopPanel(),
+      onRescan: () => scan.handleRescan(),
+      onFitView: () => window.dispatchEvent(new CustomEvent('vyuha-fit-view')),
     }),
-    [showAgent, showIngestion, needsSetup, isScanning, sse, doScan],
+    [panels, scan],
   );
 
   useKeyboardShortcuts(shortcutHandlers);
 
-  // Auto-dismiss scan diff banner after 15 seconds
-  useEffect(() => {
-    if (!scanDiff) return;
-    const timer = setTimeout(() => setScanDiff(null), 15000);
-    return () => clearTimeout(timer);
-  }, [scanDiff]);
-
   return (
     <div className="flex h-screen w-screen flex-col bg-gray-950 text-gray-100">
       {/* Scan error banner */}
-      {scanError && (
+      {scan.scanError && (
         <div className="flex items-center gap-3 bg-red-900/90 px-4 py-2 text-sm text-red-200">
           <svg className="h-4 w-4 shrink-0 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span className="flex-1">Scan failed: {scanError}</span>
+          <span className="flex-1">Scan failed: {scan.scanError}</span>
           <button
-            onClick={handleRescan}
+            onClick={scan.handleRescan}
             className="shrink-0 rounded bg-red-800 px-2.5 py-1 text-xs font-medium text-red-100 transition-colors hover:bg-red-700"
           >
             Retry
           </button>
           <button
-            onClick={() => setScanError(null)}
+            onClick={scan.dismissScanError}
             className="shrink-0 text-red-400 transition-colors hover:text-red-200"
             aria-label="Dismiss"
           >
@@ -349,49 +169,48 @@ const App: FC = () => {
       )}
 
       {/* Scan diff banner */}
-      {scanDiff && <ScanDiffBanner diff={scanDiff} onDismiss={() => setScanDiff(null)} />}
+      {scan.scanDiff && (
+        <ScanDiffBanner diff={scan.scanDiff} onDismiss={scan.dismissScanDiff} />
+      )}
 
       {/* Query bar */}
       <QueryBar onResult={handleQueryResult} isRunning={agent.isRunning} />
 
-      {/* Breadcrumb navigation */}
-      <Breadcrumbs currentNode={breadcrumbNode} onNavigate={handleBreadcrumbNavigate} />
+      {/* Breadcrumbs */}
+      <Breadcrumbs currentNode={nav.breadcrumbNode} onNavigate={nav.navigateTo} />
 
       {/* Main area */}
       <div className="relative flex-1 overflow-hidden">
         <GraphCanvas
           graph={graph}
           sse={sse}
-          navigateToNodeId={navigateToNodeId}
-          onNavigationComplete={() => setNavigateToNodeId(null)}
-          onNodeSelect={setBreadcrumbNode}
+          navigateToNodeId={nav.navigateToNodeId}
+          onNavigationComplete={nav.clearNavigation}
+          onNodeSelect={nav.selectNode}
         />
 
-        {/* Agent panel (left) */}
-        {showAgent && (
+        {/* Agent panel */}
+        {panels.showAgent && (
           <AgentPanel
             steps={sse.agentSteps}
             agentRun={agent.agentRun}
             isRunning={agent.isRunning}
-            onClose={() => {
-              setShowAgent(false);
-              sse.clearAgentSteps();
-            }}
+            onClose={panels.closeAgentPanel}
             onNodeClick={handleAgentNodeClick}
           />
         )}
       </div>
 
       {/* Log ingestion modal */}
-      {showIngestion && <LogIngestion onClose={() => setShowIngestion(false)} />}
+      {panels.showIngestion && <LogIngestion onClose={panels.closeIngestionPanel} />}
 
-      {/* Initial setup modal */}
-      {needsSetup && (
+      {/* Setup modal */}
+      {scan.needsSetup && (
         <ScanSetup
-          onScan={doScan}
-          onLoadDemo={handleLoadDemo}
-          isScanning={isScanning}
-          error={scanError}
+          onScan={scan.doScan}
+          onLoadDemo={scan.handleLoadDemo}
+          isScanning={scan.isScanning}
+          error={scan.scanError}
         />
       )}
 
@@ -400,12 +219,32 @@ const App: FC = () => {
         nodeCount={graph.nodes.length}
         edgeCount={graph.edges.length}
         isConnected={sse.isConnected}
-        onRescan={handleRescan}
-        onOpenIngestion={() => setShowIngestion(true)}
+        onRescan={scan.handleRescan}
+        onOpenIngestion={panels.openIngestionPanel}
         rfNodes={graph.nodes}
       />
     </div>
   );
 };
 
-export default App;
+// ---------------------------------------------------------------------------
+// AppWithProviders — sets up context providers, default export
+// ---------------------------------------------------------------------------
+
+const AppWithProviders: FC = () => {
+  const graph = useGraph();
+  const sse = useSSE();
+
+  return (
+    <NavigationProvider>
+      <ScanProvider graph={graph}>
+        <PanelProvider sse={sse}>
+          <AppInnerWrapper graph={graph} sse={sse} />
+        </PanelProvider>
+      </ScanProvider>
+    </NavigationProvider>
+  );
+};
+
+export default AppWithProviders;
+
