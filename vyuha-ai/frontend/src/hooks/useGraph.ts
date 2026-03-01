@@ -5,13 +5,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'; // CHANGED — added useEffect, useMemo, useRef
 import { MarkerType, useViewport } from 'reactflow'; // EDGE STYLE — added MarkerType
 import type { Node as ReactFlowNode, Edge as ReactFlowEdge } from 'reactflow';
-import dagre from 'dagre';
 import { api } from '../api/client';
 import type { GraphEdge, GraphNode, NodeType } from '../types/graph';
 import { nodeTypeToRF } from '../utils/nodeMapping';
 import type {                                                                     // FILTER PIPELINE
   GraphFilters as ControlFilters,                                                 // FILTER PIPELINE
 } from '../components/GraphControls';                                             // FILTER PIPELINE
+import { applyDagreLayout } from './useGraphLayout';
+
+// ---------------------------------------------------------------------------
+// Re-exports — backward-compatible facade for existing importers
+// ---------------------------------------------------------------------------
+export { applyDagreLayout } from './useGraphLayout';
+export {
+  applyFilters,
+  hasActiveFilters,
+  countActiveFilters,
+  DEFAULT_FILTERS,
+  type GraphFilters,
+} from './useGraphFilters';
 
 // ---------------------------------------------------------------------------
 // CHANGED — Zoom-aware filtering constants
@@ -71,250 +83,10 @@ function getImportanceThreshold(zoom: number): number {    // CHANGED
   return 0;                                                // CHANGED
 }                                                          // CHANGED
 
-// ---------------------------------------------------------------------------
-// Graph filter types
-// ---------------------------------------------------------------------------
+// (Filter types, DEFAULT_FILTERS, applyFilters, hasActiveFilters,
+//  countActiveFilters are now in ./useGraphFilters.ts — re-exported above)
 
-export interface GraphFilters {
-  statuses: Set<string>; // 'healthy' | 'degraded' | 'error' | 'unknown'
-  types: Set<string>;    // 'service' | 'package' | 'file' | 'function' | 'struct' | 'interface' | 'cloud_service' | 'data_flow'
-  quickFilter: 'none' | 'failing' | 'cloud-deps' | 'entry-points';
-}
-
-export const DEFAULT_FILTERS: GraphFilters = {
-  statuses: new Set(['healthy', 'degraded', 'error', 'unknown']),
-  types: new Set(['service', 'package', 'file', 'function', 'struct', 'interface', 'cloud_service', 'data_flow']),
-  quickFilter: 'none',
-};
-
-function matchesAllFilters(
-  node: ReactFlowNode,
-  filters: GraphFilters,
-  edges: ReactFlowEdge[],
-): boolean {
-  const data = node.data as GraphNode;
-  const status = data.runtime_status || 'unknown';
-  const type = data.type || 'unknown';
-
-  // Quick filters override normal filters
-  switch (filters.quickFilter) {
-    case 'failing':
-      return status === 'error';
-    case 'cloud-deps': {
-      if (type === 'cloud_service') return true;
-      // Include nodes that have an edge to a cloud_service node
-      // (caller side — this node is the source, cloud node is the target)
-      // We check if any edge from this node goes to a cloud node — but we
-      // don't have direct access to other nodes here, so we rely on node type.
-      // Instead, accept nodes that are sources of edges whose target is cloud.
-      return false; // handled at the applyFilters level
-    }
-    case 'entry-points': {
-      // Nodes with no incoming edges
-      const hasIncoming = edges.some((e) => e.target === node.id);
-      return !hasIncoming;
-    }
-    default:
-      break;
-  }
-
-  // Normal filters: must match BOTH status and type
-  if (!filters.statuses.has(status)) return false;
-  if (!filters.types.has(type)) return false;
-  return true;
-}
-
-export function applyFilters(
-  nodes: ReactFlowNode[],
-  edges: ReactFlowEdge[],
-  filters: GraphFilters,
-): { nodes: ReactFlowNode[]; edges: ReactFlowEdge[] } {
-  // Build matching set
-  let matchingIds: Set<string>;
-
-  if (filters.quickFilter === 'cloud-deps') {
-    // Cloud nodes + any node that has an edge to/from a cloud node
-    const cloudIds = new Set(
-      nodes
-        .filter((n) => (n.data as GraphNode).type === 'cloud_service')
-        .map((n) => n.id),
-    );
-    const connectedToCloud = new Set<string>();
-    for (const e of edges) {
-      if (cloudIds.has(e.source)) connectedToCloud.add(e.target);
-      if (cloudIds.has(e.target)) connectedToCloud.add(e.source);
-    }
-    matchingIds = new Set([...cloudIds, ...connectedToCloud]);
-  } else {
-    matchingIds = new Set(
-      nodes
-        .filter((n) => matchesAllFilters(n, filters, edges))
-        .map((n) => n.id),
-    );
-  }
-
-  return {
-    nodes: nodes.map((n) => ({
-      ...n,
-      style: {
-        ...n.style,
-        opacity: matchingIds.has(n.id) ? 1 : 0.15,
-        transition: 'opacity 0.3s ease',
-      },
-    })),
-    edges: edges.map((e) => ({
-      ...e,
-      style: {
-        ...e.style,
-        opacity:
-          matchingIds.has(e.source) && matchingIds.has(e.target) ? 1 : 0.05,
-        transition: 'opacity 0.3s ease',
-      },
-    })),
-  };
-}
-
-export function hasActiveFilters(filters: GraphFilters): boolean {
-  if (filters.quickFilter !== 'none') return true;
-  if (filters.statuses.size !== 4) return true;
-  if (filters.types.size !== 6) return true;
-  return false;
-}
-
-export function countActiveFilters(filters: GraphFilters): number {
-  let count = 0;
-  if (filters.quickFilter !== 'none') count++;
-  if (filters.statuses.size !== 4) count += (4 - filters.statuses.size);
-  if (filters.types.size !== 6) count += (6 - filters.types.size);
-  return count;
-}
-
-// ---------------------------------------------------------------------------  // LAYOUT
-// Dagre layout — rank-aware hierarchical positioning                          // LAYOUT
-// ---------------------------------------------------------------------------  // LAYOUT
-
-export const applyDagreLayout = (                                               // LAYOUT
-    nodes: ReactFlowNode[],                                                     // LAYOUT
-    edges: ReactFlowEdge[],                                                     // LAYOUT
-    options: {                                                                  // LAYOUT
-        direction?: 'TB' | 'LR'                                                 // LAYOUT
-        nodeSep?: number                                                        // LAYOUT
-        rankSep?: number                                                        // LAYOUT
-        rankByType?: boolean                                                    // LAYOUT
-    } = {}                                                                      // LAYOUT
-): { nodes: ReactFlowNode[], edges: ReactFlowEdge[] } => {                      // LAYOUT
-
-    if (nodes.length === 0) {                                                   // LAYOUT
-        return { nodes, edges }                                                 // LAYOUT
-    }                                                                           // LAYOUT
-
-    const g = new dagre.graphlib.Graph({                                        // LAYOUT
-        compound: false                                                         // LAYOUT
-    })                                                                          // LAYOUT
-
-    g.setDefaultEdgeLabel(() => ({}))                                           // LAYOUT
-
-    g.setGraph({                                                                // LAYOUT
-        rankdir:  options.direction ?? 'TB',                                    // LAYOUT
-        nodesep:  options.nodeSep   ?? 70,                                      // LAYOUT
-        ranksep:  options.rankSep   ?? 90,                                      // LAYOUT
-        marginx:  50,                                                           // LAYOUT
-        marginy:  50,                                                           // LAYOUT
-        ranker:   'network-simplex',                                            // LAYOUT
-    })                                                                          // LAYOUT
-
-    // Assign rank hints by node type for cleaner hierarchy                     // LAYOUT
-    const typeRankHint: Record<string, number> = {                              // LAYOUT
-        repository:       0,                                                    // LAYOUT
-        service:          1,                                                    // LAYOUT
-        package:          2,                                                    // LAYOUT
-        file:             3,                                                    // LAYOUT
-        function:         4,                                                    // LAYOUT
-        struct:           4,                                                    // LAYOUT
-        interface:        4,                                                    // LAYOUT
-        data_flow:        5,                                                    // LAYOUT
-        cloud_service:    6,                                                    // LAYOUT
-        runtime_instance: 6,                                                    // LAYOUT
-    }                                                                           // LAYOUT
-
-    nodes.forEach(n => {                                                        // LAYOUT
-        const nodeType = n.data?.type as string                                 // LAYOUT
-        const w = n.width  ?? getNodeWidth(nodeType)                            // LAYOUT
-        const h = n.height ?? getNodeHeight(nodeType)                           // LAYOUT
-
-        g.setNode(n.id, {                                                       // LAYOUT
-            width:  w,                                                          // LAYOUT
-            height: h,                                                          // LAYOUT
-            // dagre rank hint                                                  // LAYOUT
-            rank: options.rankByType                                            // LAYOUT
-                ? (typeRankHint[nodeType] ?? 4)                                 // LAYOUT
-                : undefined,                                                    // LAYOUT
-        })                                                                      // LAYOUT
-    })                                                                          // LAYOUT
-
-    // Only add edges that exist between visible nodes                          // LAYOUT
-    const nodeIds = new Set(nodes.map(n => n.id))                               // LAYOUT
-
-    edges.forEach(e => {                                                        // LAYOUT
-        if (nodeIds.has(e.source) && nodeIds.has(e.target)) {                   // LAYOUT
-            // Skip self-loops                                                  // LAYOUT
-            if (e.source !== e.target) {                                        // LAYOUT
-                g.setEdge(e.source, e.target)                                   // LAYOUT
-            }                                                                   // LAYOUT
-        }                                                                       // LAYOUT
-    })                                                                          // LAYOUT
-
-    dagre.layout(g)                                                             // LAYOUT
-
-    const layoutedNodes = nodes.map(n => {                                      // LAYOUT
-        const pos = g.node(n.id)                                                // LAYOUT
-        if (!pos) return n  // node not in graph                                // LAYOUT
-
-        const nodeType = n.data?.type as string                                 // LAYOUT
-        return {                                                                // LAYOUT
-            ...n,                                                               // LAYOUT
-            position: {                                                         // LAYOUT
-                x: pos.x - (n.width  ?? getNodeWidth(nodeType))  / 2,           // LAYOUT
-                y: pos.y - (n.height ?? getNodeHeight(nodeType)) / 2,           // LAYOUT
-            },                                                                  // LAYOUT
-        }                                                                       // LAYOUT
-    })                                                                          // LAYOUT
-
-    return { nodes: layoutedNodes, edges }                                      // LAYOUT
-}                                                                               // LAYOUT
-
-// Node size helpers — consistent sizes by type                                 // LAYOUT
-function getNodeWidth(type: string): number {                                   // LAYOUT
-    const widths: Record<string, number> = {                                    // LAYOUT
-        service:          200,                                                  // LAYOUT
-        package:          180,                                                  // LAYOUT
-        file:             180,                                                  // LAYOUT
-        function:         200,                                                  // LAYOUT
-        struct:           180,                                                  // LAYOUT
-        interface:        180,                                                  // LAYOUT
-        cloud_service:    160,                                                  // LAYOUT
-        data_flow:        160,                                                  // LAYOUT
-        repository:       220,                                                  // LAYOUT
-        runtime_instance: 180,                                                  // LAYOUT
-    }                                                                           // LAYOUT
-    return widths[type] ?? 180                                                  // LAYOUT
-}                                                                               // LAYOUT
-
-function getNodeHeight(type: string): number {                                  // LAYOUT
-    const heights: Record<string, number> = {                                   // LAYOUT
-        service:          60,                                                   // LAYOUT
-        package:          50,                                                   // LAYOUT
-        file:             50,                                                   // LAYOUT
-        function:         60,                                                   // LAYOUT
-        struct:           55,                                                   // LAYOUT
-        interface:        55,                                                   // LAYOUT
-        cloud_service:    55,                                                   // LAYOUT
-        data_flow:        50,                                                   // LAYOUT
-        repository:       65,                                                   // LAYOUT
-        runtime_instance: 55,                                                   // LAYOUT
-    }                                                                           // LAYOUT
-    return heights[type] ?? 50                                                  // LAYOUT
-}                                                                               // LAYOUT
+// (Layout function applyDagreLayout, getNodeWidth, getNodeHeight are now in\n//  ./useGraphLayout.ts — re-exported above)
 
 function toReactFlowNode(n: GraphNode): ReactFlowNode {
   return {
