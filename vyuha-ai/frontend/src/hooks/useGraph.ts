@@ -8,6 +8,7 @@ import type { Node as ReactFlowNode, Edge as ReactFlowEdge } from 'reactflow';
 import dagre from 'dagre';
 import { api } from '../api/client';
 import type { GraphEdge, GraphNode, NodeType } from '../types/graph';
+import { nodeTypeToRF } from '../utils/nodeMapping';
 import type {                                                                     // FILTER PIPELINE
   GraphFilters as ControlFilters,                                                 // FILTER PIPELINE
 } from '../components/GraphControls';                                             // FILTER PIPELINE
@@ -314,25 +315,6 @@ function getNodeHeight(type: string): number {                                  
     }                                                                           // LAYOUT
     return heights[type] ?? 50                                                  // LAYOUT
 }                                                                               // LAYOUT
-
-// ---------------------------------------------------------------------------
-// Convert backend types to React Flow types
-// ---------------------------------------------------------------------------
-
-function nodeTypeToRF(type: NodeType | string): string {
-  switch (type) {
-    case 'service':
-      return 'serviceNode';
-    case 'function':
-      return 'functionNode';
-    case 'cloud_service':
-      return 'cloudNode';
-    case 'data_flow':
-      return 'dataFlowNode';
-    default:
-      return 'default';
-  }
-}
 
 function toReactFlowNode(n: GraphNode): ReactFlowNode {
   return {

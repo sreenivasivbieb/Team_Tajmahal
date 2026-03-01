@@ -15,6 +15,7 @@ import { useAgent } from './hooks/useAgent';
 import { api } from './api/client';
 import type { QueryDecision } from './types/graph';
 import { applyDagreLayout } from './hooks/useGraph';
+import { nodeTypeToRF } from './utils/nodeMapping';
 
 const App: FC = () => {
   const graph = useGraph();
@@ -274,22 +275,3 @@ const App: FC = () => {
 };
 
 export default App;
-
-// ---------------------------------------------------------------------------
-// Helper — duplicated from useGraph for use in App-level conversion
-// ---------------------------------------------------------------------------
-
-function nodeTypeToRF(type: string): string {
-  switch (type) {
-    case 'service':
-      return 'serviceNode';
-    case 'function':
-      return 'functionNode';
-    case 'cloud_service':
-      return 'cloudNode';
-    case 'data_flow':
-      return 'dataFlowNode';
-    default:
-      return 'default';
-  }
-}
