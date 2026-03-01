@@ -18,6 +18,7 @@ import { applyDagreLayout } from './useGraphLayout';
 // ---------------------------------------------------------------------------
 export { applyDagreLayout } from './useGraphLayout';
 export {
+  ALL_EDGE_TYPES,
   applyFilters,
   hasActiveFilters,
   countActiveFilters,

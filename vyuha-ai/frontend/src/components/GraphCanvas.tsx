@@ -84,6 +84,21 @@ const TYPE_OPTIONS = [
   { key: 'data_flow', label: 'DataFlow' },
 ] as const;
 
+const EDGE_TYPE_OPTIONS = [
+  { key: 'contains',      label: 'Contains',      color: '#6b7280' },
+  { key: 'calls',         label: 'Calls',          color: '#60a5fa' },
+  { key: 'imports',       label: 'Imports',        color: '#a855f7' },
+  { key: 'implements',    label: 'Implements',     color: '#14b8a6' },
+  { key: 'depends_on',    label: 'Depends On',     color: '#f59e0b' },
+  { key: 'connects_to',   label: 'Cloud Connect',  color: '#8b5cf6' },
+  { key: 'runtime_calls', label: 'Runtime Calls',  color: '#34d399' },
+  { key: 'failed_at',     label: 'Failed At',      color: '#ef4444' },
+  { key: 'produces_to',   label: 'Produces',       color: '#a78bfa' },
+  { key: 'consumed_by',   label: 'Consumed By',    color: '#38bdf8' },
+  { key: 'transforms',    label: 'Transforms',     color: '#2dd4bf' },
+  { key: 'field_map',     label: 'Field Map',      color: '#fb923c' },
+] as const;
+
 const QUICK_FILTERS = [
   { key: 'failing' as const, label: 'Failing only', icon: '🔴' },
   { key: 'cloud-deps' as const, label: 'Cloud deps', icon: '☁' },
@@ -128,6 +143,23 @@ const FilterPanel: FC<{
       types: allSelected
         ? new Set<string>()
         : new Set(TYPE_OPTIONS.map((t) => t.key)),
+      quickFilter: 'none',
+    });
+  };
+
+  const toggleEdgeType = (key: string) => {
+    const next = new Set(filters.edgeTypes);
+    next.has(key) ? next.delete(key) : next.add(key);
+    onChange({ ...filters, edgeTypes: next, quickFilter: 'none' });
+  };
+
+  const toggleAllEdgeTypes = () => {
+    const allSelected = filters.edgeTypes.size === EDGE_TYPE_OPTIONS.length;
+    onChange({
+      ...filters,
+      edgeTypes: allSelected
+        ? new Set<string>()
+        : new Set(EDGE_TYPE_OPTIONS.map((et) => et.key)),
       quickFilter: 'none',
     });
   };
@@ -192,6 +224,39 @@ const FilterPanel: FC<{
                 className="h-3 w-3 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-0 focus:ring-offset-0"
               />
               {t.label}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div className="mb-2.5 border-t border-gray-800" />
+
+      {/* Edge Type filter */}
+      <div className="mb-2.5">
+        <div className="mb-1.5 flex items-center justify-between">
+          <span className="font-semibold text-gray-300">Edges</span>
+          <button
+            onClick={toggleAllEdgeTypes}
+            className="text-[10px] text-gray-500 hover:text-gray-300"
+          >
+            {filters.edgeTypes.size === EDGE_TYPE_OPTIONS.length ? 'None' : 'All'}
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1 max-h-32 overflow-y-auto">
+          {EDGE_TYPE_OPTIONS.map((et) => (
+            <label key={et.key} className="flex cursor-pointer items-center gap-1.5 text-gray-400 hover:text-gray-200">
+              <input
+                type="checkbox"
+                checked={filters.edgeTypes.has(et.key)}
+                onChange={() => toggleEdgeType(et.key)}
+                className="h-3 w-3 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-0 focus:ring-offset-0"
+              />
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ backgroundColor: et.color }}
+              />
+              {et.label}
             </label>
           ))}
         </div>
