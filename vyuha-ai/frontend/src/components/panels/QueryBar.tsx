@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';                                
 import { Badge } from '@/components/ui/badge';                                    // SHADCN: replaced chips
 
 interface QueryBarProps {
-  onResult: (result: Awaited<ReturnType<typeof api.askQuestion>>) => void;
+  onResult: (result: Awaited<ReturnType<typeof api.askQuestion>>, question: string) => void;
   isRunning: boolean;
 }
 
@@ -65,7 +65,7 @@ const QueryBar: FC<QueryBarProps> = ({ onResult, isRunning }) => {
       setSubmitting(true);
       try {
         const result = await api.askQuestion(q);
-        onResult(result);
+        onResult(result, q);
       } catch {
         /* error handled by caller */
       } finally {

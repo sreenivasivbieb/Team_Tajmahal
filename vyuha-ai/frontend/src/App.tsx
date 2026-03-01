@@ -49,7 +49,7 @@ const App: FC = () => {
 
   // Handle query result from QueryBar
   const handleQueryResult = useCallback(
-    (result: QueryDecision) => {
+    (result: QueryDecision, question: string) => {
       switch (result.mode) {
         case 'subgraph': {
           // Display the returned subgraph on the canvas
@@ -79,6 +79,9 @@ const App: FC = () => {
         case 'agent': {
           // Open agent panel
           setShowAgent(true);
+          if (!result.agent_run && !result.answer) {
+            agent.ask(question);
+          }
           break;
         }
 
@@ -113,7 +116,7 @@ const App: FC = () => {
           break;
       }
     },
-    [graph],
+    [graph, agent],
   );
 
   // Poll scan job until complete, then reload services
