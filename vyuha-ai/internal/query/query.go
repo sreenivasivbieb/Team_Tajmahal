@@ -76,11 +76,12 @@ const (
 
 // QueryDecision captures the routing decision for a question.
 type QueryDecision struct {
-	Mode        QueryMode         `json:"mode"`
+	Mode         QueryMode         `json:"mode"`
 	SubgraphType SubgraphQueryType `json:"subgraph_type,omitempty"`
-	TargetID    string            `json:"target_id,omitempty"`
-	Confidence  float64           `json:"confidence"`
-	Reasoning   string            `json:"reasoning"`
+	TargetID     string            `json:"target_id,omitempty"`
+	Confidence   float64           `json:"confidence"`
+	Reasoning    string            `json:"reasoning"`
+	Question     string            `json:"question,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
@@ -118,8 +119,8 @@ func (ql *QueryLayer) HandleQuestion(ctx context.Context, question string) (*Que
 		"question": question,
 	})
 
-	// 1. Classify the question.
-	decision := ql.classifyQuestion(question)
+	// 1. Classify the question — try semantic (AI) first, keyword fallback.
+	decision := ql.classifyQuestion(ctx, question)
 
 	ql.broadcastProgress("query_classified", map[string]interface{}{
 		"mode":       decision.Mode,
@@ -174,8 +175,10 @@ func (ql *QueryLayer) HandleQuestion(ctx context.Context, question string) (*Que
 // Question classification
 // ---------------------------------------------------------------------------
 
-// classifyQuestion analyses the question text and picks a QueryMode.
-func (ql *QueryLayer) classifyQuestion(question string) QueryDecision {
+// classifyQuestionKeyword analyses the question text using keyword matching
+// and picks a QueryMode. This is the fast, deterministic fallback used when
+// the AI provider is unavailable or the semantic classifier fails.
+func classifyQuestionKeyword(question string) QueryDecision {
 	q := strings.ToLower(question)
 
 	// Pattern: service overview
