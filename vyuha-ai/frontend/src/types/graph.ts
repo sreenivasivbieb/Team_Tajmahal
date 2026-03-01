@@ -117,6 +117,12 @@ export interface GraphNode {
 // ---- GraphEdge (matches Go graph.Edge) ------------------------------------
 
 export interface EdgeMetadata {
+  // IMPORTANCE scoring (ADDED)
+  importance?: number;         // 0-100 score, higher = more important
+  cross_package?: boolean;     // true if source and target in different packages
+  cross_service?: boolean;     // true if source and target in different services
+  call_frequency?: number;     // how many times this call appears in AST
+
   // CALLS edges
   call_type?: string;          // "method_call" | "function_call" | "interface_dispatch"
   is_resolved?: boolean;

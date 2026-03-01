@@ -34,6 +34,12 @@ const (
 // EdgeMetadata carries optional, type-specific details for an Edge.
 // Fields that do not apply to a given EdgeType remain at their zero value.
 type EdgeMetadata struct {
+	// -- Importance scoring metadata -- // ADDED
+	Importance    int  `json:"importance,omitempty"`     // ADDED — 0-100 score, higher = more important
+	CrossPackage  bool `json:"cross_package,omitempty"`  // ADDED — true if source and target in different packages
+	CrossService  bool `json:"cross_service,omitempty"`  // ADDED — true if source and target in different services
+	CallFrequency int  `json:"call_frequency,omitempty"` // ADDED — how many times this call appears in AST
+
 	// -- Calls edge metadata --
 	CallType         string `json:"call_type,omitempty"`          // "method_call"|"function_call"|"interface_dispatch"
 	IsResolved       bool   `json:"is_resolved,omitempty"`

@@ -184,11 +184,34 @@ func (p *GoParser) Parse(
 		allEdges = append(allEdges, newContainsEdge(repoID, svc.ID, 1))
 	}
 
-	// ---- 3. Collect .go files -------------------------------------------
-	goFiles, err := collectGoFiles(p.rootPath)
+	// ---- 3. Discover .go files (production-grade recursive walk) --------  // FIXED: recursive walk
+	goFiles, err := p.discoverGoFiles(p.rootPath, false)                      // FIXED: recursive walk
 	if err != nil {
-		return nil, fmt.Errorf("goparser: collect files: %w", err)
+		return nil, fmt.Errorf("goparser: file discovery: %w", err)             // FIXED: recursive walk
 	}
+
+	if len(goFiles) == 0 {                                                     // FIXED: recursive walk
+		return nil, fmt.Errorf(                                                  // FIXED: recursive walk
+			"no Go files found in %s — "+                                        // FIXED: recursive walk
+				"make sure this is a Go module directory",                          // FIXED: recursive walk
+			p.rootPath)                                                            // FIXED: recursive walk
+	}                                                                          // FIXED: recursive walk
+
+	// Log discovery results for debugging                                     // FIXED: recursive walk
+	slog.Info("file discovery complete",                                        // FIXED: recursive walk
+		"total_go_files", len(goFiles),                                         // FIXED: recursive walk
+		"root", p.rootPath,                                                     // FIXED: recursive walk
+	)                                                                          // FIXED: recursive walk
+
+	// Package-level statistics                                                 // FIXED: recursive walk
+	packageDirs := make(map[string]int)                                        // FIXED: recursive walk
+	for _, f := range goFiles {                                                // FIXED: recursive walk
+		packageDirs[filepath.Dir(f)]++                                           // FIXED: recursive walk
+	}                                                                          // FIXED: recursive walk
+	slog.Info("package distribution",                                           // FIXED: recursive walk
+		"packages", len(packageDirs),                                           // FIXED: recursive walk
+		"directories", len(packageDirs),                                        // FIXED: recursive walk
+	)                                                                          // FIXED: recursive walk
 
 	// Build per-directory package information.
 	type dirInfo struct {
@@ -655,6 +678,16 @@ func (p *GoParser) extractFunction(
 	if decl.Body != nil {
 		calls := extractCalls(decl.Body, p.fset)
 		var callNames []string
+		callFreq := make(map[string]int) // ADDED — track call frequency per target
+
+		// ADDED — first pass: count call frequency per target
+		for _, ci := range calls { // ADDED
+			if ci.name == "" { // ADDED
+				continue // ADDED
+			} // ADDED
+			targetID := fmt.Sprintf("func:%s:%s", job.importPath, ci.name) // ADDED
+			callFreq[targetID]++                                            // ADDED
+		} // ADDED
 
 		for _, ci := range calls {
 			if ci.name == "" {
@@ -666,12 +699,27 @@ func (p *GoParser) extractFunction(
 			// Direct calls → same package; selector calls → unresolved.
 			targetID := fmt.Sprintf("func:%s:%s", job.importPath, ci.name)
 
+			// ADDED — detect cross-package and cross-service boundaries
+			srcPkg := job.importPath                                                           // ADDED
+			tgtPkg := job.importPath                                                           // ADDED
+			if parts := strings.SplitN(targetID, ":", 2); len(parts) == 2 {                   // ADDED
+				if idx := strings.LastIndex(parts[1], ":"); idx >= 0 {                          // ADDED
+					tgtPkg = parts[1][:idx]                                                       // ADDED
+				}                                                                                 // ADDED
+			}                                                                                     // ADDED
+			isCrossPkg := srcPkg != tgtPkg                                                      // ADDED
+			isCrossSvc := isCrossServiceCall(srcPkg, tgtPkg, p.modulePath)                       // ADDED
+
 			callEdge := graph.NewEdge(nodeID, targetID, graph.EdgeTypeCalls)
 			callEdge.Metadata.CallType = ci.callType
 			callEdge.Metadata.IsResolved = false
 			callEdge.Metadata.CallSiteLine = ci.line
 			callEdge.Metadata.IsGoroutine = ci.isGo
 			callEdge.Metadata.IsDeferred = ci.isDefer
+			callEdge.Metadata.CrossPackage = isCrossPkg                                        // ADDED
+			callEdge.Metadata.CrossService = isCrossSvc                                        // ADDED
+			callEdge.Metadata.CallFrequency = callFreq[targetID]                                // ADDED
+			callEdge.Metadata.Importance = computeEdgeImportance(funcNode, nil, graph.EdgeTypeCalls, isCrossPkg, isCrossSvc) // ADDED
 			edges = append(edges, callEdge)
 		}
 
@@ -1056,30 +1104,122 @@ func detectServices(rootPath, modulePath string) ([]*graph.Node, error) {
 }
 
 // ---------------------------------------------------------------------------
-// collectGoFiles
+// discoverGoFiles — production-grade recursive file discovery                  // FIXED: recursive walk
 // ---------------------------------------------------------------------------
 
-// collectGoFiles returns the absolute paths of all .go files under rootPath,
-// skipping hidden directories, vendor, node_modules, and testdata.
-func collectGoFiles(rootPath string) ([]string, error) {
-	var files []string
-	err := filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
-		if d.IsDir() {
-			base := d.Name()
-			if strings.HasPrefix(base, ".") || base == "vendor" || base == "node_modules" || base == "testdata" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if strings.HasSuffix(d.Name(), ".go") {
-			files = append(files, path)
-		}
-		return nil
-	})
-	return files, err
+// skipDirs is the set of directory names that should never be recursed into.    // FIXED: recursive walk
+var skipDirs = map[string]bool{                                                  // FIXED: recursive walk
+	".git":         true,                                                       // FIXED: recursive walk
+	".svn":         true,                                                       // FIXED: recursive walk
+	".hg":          true,                                                       // FIXED: recursive walk
+	"vendor":       true,                                                       // FIXED: recursive walk
+	"testdata":     true,                                                       // FIXED: recursive walk
+	"node_modules": true,                                                       // FIXED: recursive walk
+	".idea":        true,                                                       // FIXED: recursive walk
+	".vscode":      true,                                                       // FIXED: recursive walk
+	"dist":         true,                                                       // FIXED: recursive walk
+	"build":        true,                                                       // FIXED: recursive walk
+	"bin":          true,                                                       // FIXED: recursive walk
+}                                                                               // FIXED: recursive walk
+
+// REMOVED: broken discovery — old collectGoFiles only had minimal skip rules    // REMOVED: broken discovery
+
+// discoverGoFiles returns the absolute paths of all .go files under rootPath.   // FIXED: recursive walk
+// It correctly recurses into ALL subdirectories, skipping known non-source      // FIXED: recursive walk
+// directories, hidden directories, test files (optionally), generated files,    // FIXED: recursive walk
+// and symlinks.                                                                 // FIXED: recursive walk
+func (p *GoParser) discoverGoFiles(rootPath string, includeTests bool) ([]string, error) { // FIXED: recursive walk
+	var files []string                                                          // FIXED: recursive walk
+	var mu sync.Mutex                                                           // FIXED: recursive walk
+
+	err := filepath.WalkDir(rootPath,                                           // FIXED: recursive walk
+		func(path string, d fs.DirEntry, err error) error {                      // FIXED: recursive walk
+
+			// Handle permission errors gracefully — log but don't fail           // FIXED: recursive walk
+			if err != nil {                                                        // FIXED: recursive walk
+				slog.Warn("skipping path during file discovery",                    // FIXED: recursive walk
+					"path", path,                                                   // FIXED: recursive walk
+					"error", err,                                                   // FIXED: recursive walk
+				)                                                                  // FIXED: recursive walk
+				return nil                                                         // FIXED: recursive walk
+			}                                                                      // FIXED: recursive walk
+
+			// ---- Handle directories ----                                        // FIXED: recursive walk
+			if d.IsDir() {                                                         // FIXED: recursive walk
+				name := d.Name()                                                   // FIXED: recursive walk
+
+				// Always skip known non-source directories                        // FIXED: recursive walk
+				if skipDirs[name] {                                                // FIXED: recursive walk
+					return filepath.SkipDir                                        // FIXED: recursive walk
+				}                                                                  // FIXED: recursive walk
+
+				// Skip hidden directories (start with ".")                       // FIXED: recursive walk
+				if strings.HasPrefix(name, ".") && name != "." {                   // FIXED: recursive walk
+					return filepath.SkipDir                                        // FIXED: recursive walk
+				}                                                                  // FIXED: recursive walk
+
+				// Continue recursing into this directory                          // FIXED: recursive walk
+				return nil                                                         // FIXED: recursive walk
+			}                                                                      // FIXED: recursive walk
+
+			// ---- Handle files ----                                              // FIXED: recursive walk
+
+			// Skip symlinks to avoid cycles                                      // FIXED: recursive walk
+			if d.Type()&fs.ModeSymlink != 0 {                                      // FIXED: recursive walk
+				return nil                                                         // FIXED: recursive walk
+			}                                                                      // FIXED: recursive walk
+
+			// Must be a .go file                                                 // FIXED: recursive walk
+			if !strings.HasSuffix(path, ".go") {                                   // FIXED: recursive walk
+				return nil                                                         // FIXED: recursive walk
+			}                                                                      // FIXED: recursive walk
+
+			// Skip test files if not included                                    // FIXED: recursive walk
+			if !includeTests && strings.HasSuffix(path, "_test.go") {              // FIXED: recursive walk
+				return nil                                                         // FIXED: recursive walk
+			}                                                                      // FIXED: recursive walk
+
+			// Skip generated files by reading first 512 bytes                    // FIXED: recursive walk
+			if isGeneratedFile(path) {                                             // FIXED: recursive walk
+				slog.Debug("skipping generated file", "path", path)                 // FIXED: recursive walk
+				return nil                                                         // FIXED: recursive walk
+			}                                                                      // FIXED: recursive walk
+
+			mu.Lock()                                                              // FIXED: recursive walk
+			files = append(files, path)                                            // FIXED: recursive walk
+			mu.Unlock()                                                            // FIXED: recursive walk
+
+			return nil                                                             // FIXED: recursive walk
+		},                                                                         // FIXED: recursive walk
+	)                                                                              // FIXED: recursive walk
+
+	if err != nil {                                                              // FIXED: recursive walk
+		return nil, fmt.Errorf("walking directory %s: %w", rootPath, err)         // FIXED: recursive walk
+	}                                                                              // FIXED: recursive walk
+
+	return files, nil                                                             // FIXED: recursive walk
+}                                                                                // FIXED: recursive walk
+
+// isGeneratedFile returns true if the file's first 512 bytes contain standard   // FIXED: recursive walk
+// Go generated-file markers ("Code generated" or "DO NOT EDIT").                // FIXED: recursive walk
+func isGeneratedFile(path string) bool {                                         // FIXED: recursive walk
+	f, err := os.Open(path)                                                     // FIXED: recursive walk
+	if err != nil {                                                              // FIXED: recursive walk
+		return false                                                              // FIXED: recursive walk
+	}                                                                            // FIXED: recursive walk
+	defer f.Close()                                                              // FIXED: recursive walk
+
+	// Only read the first 512 bytes for header detection                        // FIXED: recursive walk
+	buf := make([]byte, 512)                                                    // FIXED: recursive walk
+	n, _ := f.Read(buf)                                                         // FIXED: recursive walk
+	if n == 0 {                                                                  // FIXED: recursive walk
+		return false                                                              // FIXED: recursive walk
+	}                                                                            // FIXED: recursive walk
+	content := string(buf[:n])                                                   // FIXED: recursive walk
+
+	// Standard Go generated file markers                                        // FIXED: recursive walk
+	return strings.Contains(content, "Code generated") ||                        // FIXED: recursive walk
+		strings.Contains(content, "DO NOT EDIT")                                  // FIXED: recursive walk
 }
 
 // ---------------------------------------------------------------------------
@@ -1246,3 +1386,72 @@ func newContainsEdge(parentID, childID string, depth int) *graph.Edge {
 	e.Metadata.HierarchyDepth = depth
 	return e
 }
+
+// ---------------------------------------------------------------------------
+// computeEdgeImportance — score an edge by structural importance          // ADDED
+// ---------------------------------------------------------------------------
+
+// computeEdgeImportance returns a 0-100 importance score for an edge.      // ADDED
+// Higher scores indicate edges that are more architecturally significant.  // ADDED
+func computeEdgeImportance( // ADDED
+	sourceNode *graph.Node, // ADDED
+	targetNode *graph.Node, // ADDED
+	edgeType graph.EdgeType, // ADDED
+	crossPackage bool, // ADDED
+	crossService bool, // ADDED
+) int { // ADDED
+	score := 0 // ADDED
+
+	// Cloud calls are always critical // ADDED
+	if targetNode != nil && // ADDED
+		targetNode.Type == graph.NodeTypeCloudService { // ADDED
+		score += 40 // ADDED
+	} // ADDED
+
+	// Cross-service calls are important // ADDED
+	if crossService { // ADDED
+		score += 30 // ADDED
+	} // ADDED
+
+	// Cross-package calls matter more // ADDED
+	if crossPackage { // ADDED
+		score += 20 // ADDED
+	} // ADDED
+
+	// Exported target is more important // ADDED
+	if targetNode != nil && targetNode.IsExported { // ADDED
+		score += 10 // ADDED
+	} // ADDED
+
+	// Edge type weights // ADDED
+	switch edgeType { // ADDED
+	case graph.EdgeTypeDependsOn: // ADDED
+		score += 20 // ADDED
+	case graph.EdgeTypeImplements: // ADDED
+		score += 15 // ADDED
+	case graph.EdgeTypeProducesTo: // ADDED
+		score += 25 // ADDED
+	case graph.EdgeTypeConsumedBy: // ADDED
+		score += 25 // ADDED
+	case graph.EdgeTypeFailedAt: // ADDED
+		score += 50 // ADDED
+	} // ADDED
+
+	if score > 100 { // ADDED
+		score = 100 // ADDED
+	} // ADDED
+	return score // ADDED
+} // ADDED
+
+// isCrossServiceCall reports whether srcPkg and tgtPkg belong to different // ADDED
+// top-level service directories (e.g. cmd/server vs internal/api).         // ADDED
+func isCrossServiceCall(srcPkg, tgtPkg, modulePath string) bool { // ADDED
+	srcRel := strings.TrimPrefix(srcPkg, modulePath+"/") // ADDED
+	tgtRel := strings.TrimPrefix(tgtPkg, modulePath+"/") // ADDED
+	if srcRel == tgtRel {                                  // ADDED
+		return false                                        // ADDED
+	}                                                      // ADDED
+	srcTop := strings.SplitN(srcRel, "/", 2)[0]           // ADDED
+	tgtTop := strings.SplitN(tgtRel, "/", 2)[0]           // ADDED
+	return srcTop != tgtTop                                // ADDED
+} // ADDED

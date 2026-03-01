@@ -1,56 +1,49 @@
 // ---------------------------------------------------------------------------
 // panels/LogIngestion.tsx — Modal for testing runtime log ingestion
+// SHADCN: replaced modal/tabs/input/button/label with Dialog, Tabs, Input, Button, Label, Select
 // ---------------------------------------------------------------------------
 
 import { useCallback, useState, type FC, type FormEvent } from 'react';
 import { api } from '../../api/client';
 import type { LogEvent } from '../../types/graph';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'; // SHADCN: replaced modal
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';             // SHADCN: replaced tabs
+import { Input } from '@/components/ui/input';                                                // SHADCN: replaced <input>
+import { Button } from '@/components/ui/button';                                              // SHADCN: replaced <button>
+import { Label } from '@/components/ui/label';                                                // SHADCN: replaced <label>
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // SHADCN: replaced <select>
 
 interface LogIngestionProps {
   onClose: () => void;
 }
 
-type Mode = 'single' | 'batch';
-
 const LogIngestion: FC<LogIngestionProps> = ({ onClose }) => {
-  const [mode, setMode] = useState<Mode>('single');
-
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60">
-      <div className="w-[560px] max-h-[90vh] overflow-y-auto rounded-lg border border-gray-700 bg-gray-900 shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-700 px-5 py-3">
-          <h2 className="text-sm font-semibold text-gray-100">
+    // SHADCN: replaced custom modal overlay with <Dialog>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-[560px] max-h-[90vh] overflow-y-auto bg-gray-900 border-gray-700">
+        <DialogHeader>
+          <DialogTitle className="text-sm font-semibold text-gray-100">
             Log Ingestion
-          </h2>
-          <button
-            onClick={onClose}
-            className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
-          >
-            ✕
-          </button>
-        </div>
+          </DialogTitle>
+        </DialogHeader>
 
-        {/* Mode tabs */}
-        <div className="flex border-b border-gray-800 px-5">
-          <Tab
-            label="Single Event"
-            active={mode === 'single'}
-            onClick={() => setMode('single')}
-          />
-          <Tab
-            label="Batch (JSON)"
-            active={mode === 'batch'}
-            onClick={() => setMode('batch')}
-          />
-        </div>
+        {/* SHADCN: replaced custom Tab component with <Tabs> */}
+        <Tabs defaultValue="single">
+          <TabsList className="bg-gray-800">
+            <TabsTrigger value="single">Single Event</TabsTrigger>
+            <TabsTrigger value="batch">Batch (JSON)</TabsTrigger>
+          </TabsList>
 
-        {/* Body */}
-        <div className="px-5 py-4">
-          {mode === 'single' ? <SingleForm /> : <BatchForm />}
-        </div>
-      </div>
-    </div>
+          <TabsContent value="single" className="mt-4">
+            <SingleForm />
+          </TabsContent>
+          <TabsContent value="batch" className="mt-4">
+            <BatchForm />
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -106,93 +99,106 @@ function SingleForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      <Field label="Node ID *">
-        <input
+      {/* SHADCN: replaced Field+input with Label+Input */}
+      <div className="space-y-1">
+        <Label className="text-[11px] text-gray-500">Node ID *</Label>
+        <Input
           value={nodeId}
           onChange={(e) => setNodeId(e.target.value)}
           placeholder="function:my-service/pkg.MyFunc"
-          className="input"
+          className="bg-gray-800 border-gray-700 text-gray-100 placeholder:text-gray-500"
           required
         />
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Event Type">
-          <select
-            value={eventType}
-            onChange={(e) => setEventType(e.target.value)}
-            className="input"
-          >
-            <option value="http_request">http_request</option>
-            <option value="grpc_call">grpc_call</option>
-            <option value="db_query">db_query</option>
-            <option value="queue_publish">queue_publish</option>
-            <option value="queue_consume">queue_consume</option>
-            <option value="custom">custom</option>
-          </select>
-        </Field>
-        <Field label="Status">
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="input"
-          >
-            <option value="success">success</option>
-            <option value="error">error</option>
-            <option value="timeout">timeout</option>
-          </select>
-        </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Error Message">
-          <input
+        {/* SHADCN: replaced <select> with <Select> */}
+        <div className="space-y-1">
+          <Label className="text-[11px] text-gray-500">Event Type</Label>
+          <Select value={eventType} onValueChange={setEventType}>
+            <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-100">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-800 border-gray-700">
+              <SelectItem value="http_request">http_request</SelectItem>
+              <SelectItem value="grpc_call">grpc_call</SelectItem>
+              <SelectItem value="db_query">db_query</SelectItem>
+              <SelectItem value="queue_publish">queue_publish</SelectItem>
+              <SelectItem value="queue_consume">queue_consume</SelectItem>
+              <SelectItem value="custom">custom</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[11px] text-gray-500">Status</Label>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-100">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-800 border-gray-700">
+              <SelectItem value="success">success</SelectItem>
+              <SelectItem value="error">error</SelectItem>
+              <SelectItem value="timeout">timeout</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label className="text-[11px] text-gray-500">Error Message</Label>
+          <Input
             value={errorMessage}
             onChange={(e) => setErrorMessage(e.target.value)}
-            className="input"
+            className="bg-gray-800 border-gray-700 text-gray-100 placeholder:text-gray-500"
             placeholder="connection refused"
           />
-        </Field>
-        <Field label="Error Code">
-          <input
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[11px] text-gray-500">Error Code</Label>
+          <Input
             value={errorCode}
             onChange={(e) => setErrorCode(e.target.value)}
-            className="input"
+            className="bg-gray-800 border-gray-700 text-gray-100 placeholder:text-gray-500"
             placeholder="ECONNREFUSED"
           />
-        </Field>
+        </div>
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <Field label="Latency (ms)">
-          <input
+        <div className="space-y-1">
+          <Label className="text-[11px] text-gray-500">Latency (ms)</Label>
+          <Input
             type="number"
             value={latencyMs}
             onChange={(e) => setLatencyMs(e.target.value)}
-            className="input"
+            className="bg-gray-800 border-gray-700 text-gray-100 placeholder:text-gray-500"
             placeholder="42"
           />
-        </Field>
-        <Field label="Trace ID">
-          <input
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[11px] text-gray-500">Trace ID</Label>
+          <Input
             value={traceId}
             onChange={(e) => setTraceId(e.target.value)}
-            className="input"
+            className="bg-gray-800 border-gray-700 text-gray-100 placeholder:text-gray-500"
           />
-        </Field>
-        <Field label="Span ID">
-          <input
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[11px] text-gray-500">Span ID</Label>
+          <Input
             value={spanId}
             onChange={(e) => setSpanId(e.target.value)}
-            className="input"
+            className="bg-gray-800 border-gray-700 text-gray-100 placeholder:text-gray-500"
           />
-        </Field>
+        </div>
       </div>
 
-      <button
+      {/* SHADCN: replaced <button> with <Button> */}
+      <Button
         type="submit"
         disabled={submitting || !nodeId.trim()}
-        className="w-full rounded-md bg-blue-600 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+        className="w-full"
       >
         {submitting ? 'Submitting…' : 'Ingest Event'}
-      </button>
+      </Button>
 
       {result && (
         <div
@@ -250,23 +256,25 @@ function BatchForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      <Field label="JSON Array of events">
+      <div className="space-y-1">
+        <Label className="text-[11px] text-gray-500">JSON Array of events</Label>
         <textarea
           value={json}
           onChange={(e) => setJson(e.target.value)}
           rows={10}
-          className="input font-mono text-[11px]"
+          className="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 outline-none focus:border-blue-500 font-mono text-[11px]"
           placeholder={`[\n  {\n    "node_id": "function:...",\n    "event_type": "http_request",\n    "status": "error",\n    "error_message": "timeout"\n  }\n]`}
         />
-      </Field>
+      </div>
 
-      <button
+      {/* SHADCN: replaced <button> with <Button> */}
+      <Button
         type="submit"
         disabled={submitting || !json.trim()}
-        className="w-full rounded-md bg-blue-600 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+        className="w-full"
       >
         {submitting ? 'Submitting…' : 'Ingest Batch'}
-      </button>
+      </Button>
 
       {result && (
         <div
@@ -280,47 +288,5 @@ function BatchForm() {
         </div>
       )}
     </form>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Shared components
-// ---------------------------------------------------------------------------
-
-function Tab({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`border-b-2 px-4 py-2 text-xs font-medium transition-colors ${
-        active
-          ? 'border-blue-500 text-blue-400'
-          : 'border-transparent text-gray-500 hover:text-gray-300'
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-0.5 block text-[11px] text-gray-500">{label}</span>
-      {children}
-    </label>
   );
 }

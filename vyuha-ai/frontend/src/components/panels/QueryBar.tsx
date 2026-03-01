@@ -1,10 +1,15 @@
 // ---------------------------------------------------------------------------
 // panels/QueryBar.tsx — Top query bar for natural-language questions
+// SHADCN: replaced hand-written input/button/chips with Input, Button, Badge
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useState, type FC, type FormEvent } from 'react';
+import { Loader2 } from 'lucide-react';                                          // SHADCN: icon
 import { api } from '../../api/client';
 import type { GraphNode } from '../../types/graph';
+import { Input } from '@/components/ui/input';                                    // SHADCN: replaced <input>
+import { Button } from '@/components/ui/button';                                  // SHADCN: replaced <button>
+import { Badge } from '@/components/ui/badge';                                    // SHADCN: replaced chips
 
 interface QueryBarProps {
   onResult: (result: Awaited<ReturnType<typeof api.askQuestion>>) => void;
@@ -77,43 +82,46 @@ const QueryBar: FC<QueryBarProps> = ({ onResult, isRunning }) => {
   const busy = submitting || isRunning;
 
   return (
-    <div className="border-b border-gray-800 bg-gray-900/80 px-4 py-2 backdrop-blur">
+    <div className="border-b border-border bg-gray-900/80 px-4 py-2 backdrop-blur">
       <form onSubmit={handleSubmit} className="flex items-center gap-2">
-        <input
+        {/* SHADCN: replaced <input> with <Input> */}
+        <Input
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="Ask anything about your codebase…"
-          className="flex-1 rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 outline-none focus:border-blue-500"
+          className="flex-1 bg-gray-800 border-gray-700 text-gray-100 placeholder:text-gray-500 focus-visible:ring-blue-500"
           disabled={busy}
         />
-        <button
+        {/* SHADCN: replaced <button> with <Button> */}
+        <Button
           type="submit"
           disabled={busy || !question.trim()}
-          className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+          size="sm"
         >
           {busy ? (
             <span className="flex items-center gap-1">
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              <Loader2 className="h-3 w-3 animate-spin" />
               Thinking…
             </span>
           ) : (
             'Ask'
           )}
-        </button>
+        </Button>
       </form>
 
-      {/* Suggestion chips */}
+      {/* SHADCN: replaced suggestion chips with Badge variant="outline" */}
       {suggestions.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {suggestions.map((s, i) => (
-            <button
+            <Badge
               key={i}
+              variant="outline"
+              className="cursor-pointer text-[11px] text-gray-400 hover:border-blue-500 hover:text-blue-300"
               onClick={() => handleChip(s)}
-              className="rounded-full border border-gray-700 px-2.5 py-0.5 text-[11px] text-gray-400 hover:border-blue-500 hover:text-blue-300"
             >
               {s}
-            </button>
+            </Badge>
           ))}
         </div>
       )}

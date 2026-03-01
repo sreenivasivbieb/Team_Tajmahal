@@ -77,8 +77,9 @@ func (s *Server) handleGraphChildren(w http.ResponseWriter, r *http.Request) {
 	// For service nodes, also include descendants from the corresponding
 	// package node. The parser creates service: and pkg: nodes as siblings
 	// under the repo; functions live under pkg → file → func.
+	var pkgID string
 	if strings.HasPrefix(parentID, "service:") {
-		pkgID := "pkg:" + strings.TrimPrefix(parentID, "service:")
+		pkgID = "pkg:" + strings.TrimPrefix(parentID, "service:")
 		if _, ok := s.index.GetNode(pkgID); ok {
 			pkgDescendants := s.index.GetDescendants(pkgID, 4)
 			seen := make(map[string]bool, len(nodes))
@@ -91,17 +92,60 @@ func (s *Server) handleGraphChildren(w http.ResponseWriter, r *http.Request) {
 					seen[n.ID] = true
 				}
 			}
+		} else {
+			pkgID = "" // pkg node doesn't exist
 		}
 	}
 
-	// Collect node IDs for edge lookup.
-	nodeIDs := make([]string, 0, len(nodes)+1)
+	// Collect node IDs for edge lookup — include pkgID so we get
+	// the contains edges from pkg → file.
+	nodeIDs := make([]string, 0, len(nodes)+2)
 	nodeIDs = append(nodeIDs, parentID)
+	if pkgID != "" {
+		nodeIDs = append(nodeIDs, pkgID)
+	}
 	for _, n := range nodes {
 		nodeIDs = append(nodeIDs, n.ID)
 	}
 
 	edges := s.index.GetEdgesBetween(nodeIDs)
+
+	// Remap edges: replace pkg: source/target with service: so the
+	// frontend sees edges connected to the service node it already has.
+	if pkgID != "" {
+		for i := range edges {
+			if edges[i].SourceID == pkgID {
+				edges[i].SourceID = parentID
+			}
+			if edges[i].TargetID == pkgID {
+				edges[i].TargetID = parentID
+			}
+		}
+	}
+
+	// Synthesize "contains" edges from parentID to each node whose parent_id
+	// matches parentID or pkgID but has no explicit incoming contains edge.
+	// This ensures the service→file→function hierarchy is connected.
+	incomingContains := make(map[string]bool)
+	for _, e := range edges {
+		if e.Type == "contains" {
+			incomingContains[e.TargetID] = true
+		}
+	}
+	for _, n := range nodes {
+		if incomingContains[n.ID] {
+			continue // already has a contains edge
+		}
+		// Check if this node's parent is the requested parent or the pkg alias.
+		if n.ParentID == parentID || (pkgID != "" && n.ParentID == pkgID) {
+			edges = append(edges, &graph.Edge{
+				ID:       parentID + "-contains-" + n.ID,
+				SourceID: parentID,
+				TargetID: n.ID,
+				Type:     "contains",
+			})
+		}
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"data": map[string]interface{}{
@@ -207,10 +251,11 @@ func (s *Server) handleGraphNode(w http.ResponseWriter, r *http.Request) {
 
 	// For service nodes, also include descendants from the corresponding
 	// package node so the detail view shows functions.
+	var svcPkgID string
 	if node.Type == graph.NodeTypeService {
-		pkgID := "pkg:" + strings.TrimPrefix(nodeID, "service:")
-		if _, ok := s.index.GetNode(pkgID); ok {
-			pkgDescendants := s.index.GetDescendants(pkgID, 4)
+		svcPkgID = "pkg:" + strings.TrimPrefix(nodeID, "service:")
+		if _, ok := s.index.GetNode(svcPkgID); ok {
+			pkgDescendants := s.index.GetDescendants(svcPkgID, 4)
 			seen := make(map[string]bool, len(children))
 			for _, n := range children {
 				seen[n.ID] = true
@@ -221,14 +266,34 @@ func (s *Server) handleGraphNode(w http.ResponseWriter, r *http.Request) {
 					seen[n.ID] = true
 				}
 			}
+		} else {
+			svcPkgID = ""
 		}
 	}
 
 	// In-edges (who calls/targets this).
 	inEdges := s.index.GetInEdges(nodeID)
+	if svcPkgID != "" {
+		pkgIn := s.index.GetInEdges(svcPkgID)
+		for i := range pkgIn {
+			if pkgIn[i].TargetID == svcPkgID {
+				pkgIn[i].TargetID = nodeID
+			}
+		}
+		inEdges = append(inEdges, pkgIn...)
+	}
 
 	// Out-edges (what this calls/targets).
 	outEdges := s.index.GetOutEdges(nodeID)
+	if svcPkgID != "" {
+		pkgOut := s.index.GetOutEdges(svcPkgID)
+		for i := range pkgOut {
+			if pkgOut[i].SourceID == svcPkgID {
+				pkgOut[i].SourceID = nodeID
+			}
+		}
+		outEdges = append(outEdges, pkgOut...)
+	}
 
 	// Data flow — only for function nodes.
 	var dataFlow interface{}

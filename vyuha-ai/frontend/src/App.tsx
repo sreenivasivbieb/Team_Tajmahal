@@ -67,8 +67,8 @@ const App: FC = () => {
               label: e.type,
               animated: e.type === 'calls' || e.type === 'runtime_calls',
             }));
-            const laid = applyDagreLayout(rfNodes, rfEdges);
-            graph.setNodesAndEdges(laid, rfEdges);
+            const laid = applyDagreLayout(rfNodes, rfEdges, { rankByType: true }); // LAYOUT
+            graph.setNodesAndEdges(laid.nodes, laid.edges);                      // LAYOUT
           } else if (result.target_id && result.subgraph_type) {
             graph.loadSubgraph(result.target_id, result.subgraph_type);
           }
@@ -97,8 +97,8 @@ const App: FC = () => {
               label: e.type,
               animated: false,
             }));
-            const laid = applyDagreLayout(rfNodes, rfEdges);
-            graph.setNodesAndEdges(laid, rfEdges);
+            const laid = applyDagreLayout(rfNodes, rfEdges, { rankByType: true }); // LAYOUT
+            graph.setNodesAndEdges(laid.nodes, laid.edges);                      // LAYOUT
           }
           break;
         }

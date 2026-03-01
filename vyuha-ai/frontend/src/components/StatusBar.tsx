@@ -1,11 +1,17 @@
 // ---------------------------------------------------------------------------
 // components/StatusBar.tsx — Fixed bottom bar with graph stats & SSE status
+// SHADCN: replaced buttons with Button, badges with Badge, added Tooltip
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState, type FC } from 'react';
 import type { Node as RFNode } from 'reactflow';
 import type { GraphNode, GraphStats, WatchStatus } from '../types/graph';
 import { api } from '../api/client';
+import { Button } from '@/components/ui/button';                                  // SHADCN: replaced <button>
+import { Badge } from '@/components/ui/badge';                                    // SHADCN: replaced stat badges
+import { Input } from '@/components/ui/input';                                    // SHADCN: replaced <input>
+import { Separator } from '@/components/ui/separator';                            // SHADCN: replaced border-l dividers
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; // SHADCN: added tooltips
 
 interface StatusBarProps {
   nodeCount: number;
@@ -127,45 +133,51 @@ const WatchModal: FC<{ onClose: () => void }> = ({ onClose }) => {
       <div className="relative w-96 rounded-lg border border-gray-700 bg-gray-900 p-4 shadow-2xl">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-200">Watch File</h3>
-          <button
+          {/* SHADCN: replaced close button with <Button> */}
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onClose}
-            className="text-gray-500 transition-colors hover:text-gray-300"
+            className="h-6 w-6 p-0 text-gray-500 hover:text-gray-300"
           >
             ✕
-          </button>
+          </Button>
         </div>
 
-        {/* File path input */}
+        {/* SHADCN: replaced <input> with <Input> */}
         <div className="mb-3">
-          <input
+          <Input
             type="text"
             value={filePath}
             onChange={(e) => setFilePath(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !isWatching && handleStart()}
             placeholder="/var/log/payments.log"
             disabled={isWatching}
-            className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-100 placeholder-gray-500 outline-none focus:border-blue-500 disabled:opacity-50"
+            className="bg-gray-800 border-gray-700 text-xs text-gray-100 placeholder:text-gray-500 disabled:opacity-50"
           />
         </div>
 
-        {/* Start / Stop button */}
+        {/* SHADCN: replaced Start/Stop buttons with <Button> */}
         <div className="mb-3">
           {isWatching ? (
-            <button
+            <Button
               onClick={handleStop}
               disabled={loading}
-              className="w-full rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+              variant="destructive"
+              className="w-full text-xs"
+              size="sm"
             >
               {loading ? 'Stopping…' : 'Stop Watching'}
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               onClick={handleStart}
               disabled={loading || !filePath.trim()}
-              className="w-full rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+              className="w-full text-xs"
+              size="sm"
             >
               {loading ? 'Starting…' : 'Start Watching'}
-            </button>
+            </Button>
           )}
         </div>
 
@@ -363,7 +375,8 @@ const StatusBar: FC<StatusBarProps> = ({
 
   return (
     <>
-      <div className="flex h-8 items-center justify-between border-t border-gray-800 bg-gray-900 px-4 text-xs text-gray-400">
+      <TooltipProvider delayDuration={300}>
+      <div className="flex h-8 items-center justify-between border-t border-border bg-gray-900 px-4 text-xs text-gray-400">
         {/* Left — counts */}
         <div className="flex items-center gap-4">
           <span>
@@ -377,10 +390,11 @@ const StatusBar: FC<StatusBarProps> = ({
               <span className="font-medium text-gray-300">{stats.nodes_by_type?.['service'] ?? 0}</span> services
             </span>
           )}
+          {/* SHADCN: replaced error count with Badge */}
           {stats && (stats.status_counts?.['error'] ?? 0) > 0 && (
-            <span className="text-red-400">
-              <span className="font-medium">{stats.status_counts?.['error']}</span> errors
-            </span>
+            <Badge variant="destructive" className="h-4 px-1.5 text-[10px]">
+              {stats.status_counts?.['error']} errors
+            </Badge>
           )}
         </div>
 
@@ -406,54 +420,78 @@ const StatusBar: FC<StatusBarProps> = ({
         </div>
 
         {/* Right — actions & last scan */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {lastScan && <span>Last scan: {lastScan}</span>}
 
-          {/* Quick-inject buttons */}
-          <button
-            onClick={handleInjectError}
-            disabled={injecting}
-            className="rounded bg-red-900/60 px-2 py-0.5 text-red-300 transition-colors hover:bg-red-800/60 disabled:opacity-50"
-            title="Inject a synthetic error into a random healthy function"
-          >
-            {injecting ? '…' : '💥'} Inject Error
-          </button>
-          <button
-            onClick={handleRecoverAll}
-            disabled={recovering}
-            className="rounded bg-green-900/60 px-2 py-0.5 text-green-300 transition-colors hover:bg-green-800/60 disabled:opacity-50"
-            title="Send recovery events for all failing nodes"
-          >
-            {recovering ? '…' : '✅'} Recover All
-          </button>
+          {/* SHADCN: replaced quick-inject buttons with Button + Tooltip */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={handleInjectError}
+                disabled={injecting}
+                variant="outline"
+                size="sm"
+                className="h-6 border-red-900/60 bg-red-900/60 px-2 text-[11px] text-red-300 hover:bg-red-800/60"
+              >
+                {injecting ? '…' : '💥'} Inject Error
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Inject a synthetic error into a random healthy function</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={handleRecoverAll}
+                disabled={recovering}
+                variant="outline"
+                size="sm"
+                className="h-6 border-green-900/60 bg-green-900/60 px-2 text-[11px] text-green-300 hover:bg-green-800/60"
+              >
+                {recovering ? '…' : '✅'} Recover All
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Send recovery events for all failing nodes</p>
+            </TooltipContent>
+          </Tooltip>
 
-          <span className="mx-0.5 h-3 border-l border-gray-700" />
+          {/* SHADCN: replaced border-l divider with <Separator> */}
+          <Separator orientation="vertical" className="mx-0.5 h-3" />
 
-          <button
+          {/* SHADCN: replaced action buttons with <Button variant="outline"> */}
+          <Button
             onClick={() => setShowWatch(true)}
-            className={`rounded px-2 py-0.5 transition-colors ${
+            variant="outline"
+            size="sm"
+            className={`h-6 px-2 text-[11px] ${
               watchActive
-                ? 'bg-green-900/60 text-green-300 hover:bg-green-800/60'
-                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                ? 'border-green-700 bg-green-900/60 text-green-300 hover:bg-green-800/60'
+                : ''
             }`}
           >
             {watchActive ? '● Watching' : 'Watch File'}
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={onOpenIngestion}
-            className="rounded bg-gray-800 px-2 py-0.5 text-gray-300 transition-colors hover:bg-gray-700"
+            variant="outline"
+            size="sm"
+            className="h-6 px-2 text-[11px]"
           >
             Ingest Logs
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleRescan}
             disabled={scanning}
-            className="rounded bg-blue-600 px-2 py-0.5 text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+            size="sm"
+            className="h-6 px-2 text-[11px]"
           >
             {scanning ? 'Scanning…' : 'Rescan'}
-          </button>
+          </Button>
         </div>
       </div>
+      </TooltipProvider>
 
       {/* Toast notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

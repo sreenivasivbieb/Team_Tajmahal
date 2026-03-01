@@ -7,6 +7,7 @@ import ReactFlow, {
   Background,
   Controls,
   MiniMap,
+  Panel,                                                                          // FOCUS MODE
   type Node as RFNode,
   type NodeMouseHandler,
   useNodesState,
@@ -18,7 +19,13 @@ import ServiceNode from './nodes/ServiceNode';
 import FunctionNode from './nodes/FunctionNode';
 import CloudNode from './nodes/CloudNode';
 import DataFlowNode from './nodes/DataFlowNode';
+import BundledEdge from './edges/BundledEdge';                                     // BUNDLE
 import DetailPanel from './panels/DetailPanel';
+import {                                                                            // FILTER CONTROLS
+  GraphControls,                                                                  // FILTER CONTROLS
+  DEFAULT_FILTERS as DEFAULT_CTRL_FILTERS,                                        // FILTER CONTROLS
+  type GraphFilters as CtrlFilters,                                               // FILTER CONTROLS
+} from './GraphControls';                                                         // FILTER CONTROLS
 import type { GraphNode } from '../types/graph';
 import type { UseGraphReturn } from '../hooks/useGraph';
 import type { UseSSEReturn } from '../hooks/useSSE';
@@ -216,6 +223,58 @@ const FilterPanel: FC<{
   );
 };
 
+// ---------------------------------------------------------------------------  // EDGE STYLE
+// EdgeLegend sub-component                                                      // EDGE STYLE
+// ---------------------------------------------------------------------------  // EDGE STYLE
+
+const EdgeLegend: FC = () => {                                                    // EDGE STYLE
+  const [visible, setVisible] = useState(false);                                  // EDGE STYLE
+
+  const items = [                                                                 // EDGE STYLE
+    { color: '#60A5FA', label: 'Calls',       dash: false },                      // EDGE STYLE
+    { color: '#F59E0B', label: 'Depends On',  dash: false },                      // EDGE STYLE
+    { color: '#A78BFA', label: 'Implements',  dash: true  },                      // EDGE STYLE
+    { color: '#34D399', label: 'Produces To', dash: false },                      // EDGE STYLE
+    { color: '#F97316', label: 'Consumed By', dash: true  },                      // EDGE STYLE
+    { color: '#EF4444', label: 'Failed At',   dash: false },                      // EDGE STYLE
+    { color: '#4B5563', label: 'Imports',     dash: true  },                      // EDGE STYLE
+  ];                                                                              // EDGE STYLE
+
+  return (                                                                        // EDGE STYLE
+    <Panel position="bottom-left">                                                {/* EDGE STYLE */}
+      <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-12">
+        <button                                                                   // EDGE STYLE
+          onClick={() => setVisible(v => !v)}                                     // EDGE STYLE
+          className="w-full px-3 py-1.5 text-xs text-gray-400 hover:text-white flex items-center gap-2"
+        >                                                                         {/* EDGE STYLE */}
+          <span>⬡</span>                                                         {/* EDGE STYLE */}
+          <span>Edge Types</span>                                                 {/* EDGE STYLE */}
+          <span className="ml-auto">{visible ? '▲' : '▼'}</span>                 {/* EDGE STYLE */}
+        </button>                                                                 {/* EDGE STYLE */}
+
+        {visible && (                                                             /* EDGE STYLE */
+          <div className="px-3 pb-2 space-y-1.5 border-t border-gray-800">       {/* EDGE STYLE */}
+            {items.map(item => (                                                  /* EDGE STYLE */
+              <div key={item.label} className="flex items-center gap-2">          {/* EDGE STYLE */}
+                <svg width="20" height="4">                                       {/* EDGE STYLE */}
+                  <line                                                           // EDGE STYLE
+                    x1="0" y1="2"                                                // EDGE STYLE
+                    x2="20" y2="2"                                               // EDGE STYLE
+                    stroke={item.color}                                           // EDGE STYLE
+                    strokeWidth="2"                                               // EDGE STYLE
+                    strokeDasharray={item.dash ? '4 2' : undefined}               // EDGE STYLE
+                  />                                                              {/* EDGE STYLE */}
+                </svg>                                                            {/* EDGE STYLE */}
+                <span className="text-xs text-gray-400">{item.label}</span>       {/* EDGE STYLE */}
+              </div>                                                              /* EDGE STYLE */
+            ))}                                                                   {/* EDGE STYLE */}
+          </div>                                                                  /* EDGE STYLE */
+        )}                                                                        {/* EDGE STYLE */}
+      </div>                                                                      {/* EDGE STYLE */}
+    </Panel>                                                                      /* EDGE STYLE */
+  );                                                                              // EDGE STYLE
+};                                                                                // EDGE STYLE
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -230,6 +289,7 @@ const GraphCanvas: FC<GraphCanvasProps> = ({ graph, sse }) => {
     }),
     [],
   );
+  const edgeTypes = useMemo(() => ({ bundled: BundledEdge }), []);                 // BUNDLE
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(graph.nodes);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(graph.edges);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -238,6 +298,17 @@ const GraphCanvas: FC<GraphCanvasProps> = ({ graph, sse }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [filters, setFilters] = useState<GraphFilters>(() => ({ ...DEFAULT_FILTERS }));
   const [filterOpen, setFilterOpen] = useState(false);
+  // ctrlFilters now managed inside useGraph — use graph.setControlFilters       // FILTER PIPELINE
+
+  // FOCUS MODE — extract focus state from graph hook
+  const { focusedNodeId, setFocusedNodeId } = graph;                               // FOCUS MODE
+
+  // FOCUS MODE — helper to get node name for focus indicator
+  const getFocusedNodeName = useCallback((id: string | null): string => {           // FOCUS MODE
+    if (!id) return '';                                                             // FOCUS MODE
+    const node = graph.nodes.find(n => n.id === id);                                // FOCUS MODE
+    return node?.data?.name ?? id;                                                  // FOCUS MODE
+  }, [graph.nodes]);                                                                // FOCUS MODE
 
   // Sync external graph state → React Flow state (with filters applied)
   useEffect(() => {
@@ -260,15 +331,17 @@ const GraphCanvas: FC<GraphCanvasProps> = ({ graph, sse }) => {
     });
   }, [sse.nodeStatusUpdates, graph]);
 
-  // Node click → open detail panel
+  // Node click → toggle focus + open detail panel                                 // FOCUS MODE
   const onNodeClick: NodeMouseHandler = useCallback((_event, node: RFNode) => {
+    setFocusedNodeId(prev => prev === node.id ? null : node.id);                    // FOCUS MODE
     setSelectedNode(node.data as GraphNode);
-  }, []);
+  }, [setFocusedNodeId]);
 
-  // Background click → close panel
+  // Background click → clear focus + close panel                                   // FOCUS MODE
   const onPaneClick = useCallback(() => {
+    setFocusedNodeId(null);                                                         // FOCUS MODE
     setSelectedNode(null);
-  }, []);
+  }, [setFocusedNodeId]);
 
   // Navigate from detail panel to another node
   const handleNavigate = useCallback(
@@ -428,6 +501,7 @@ const GraphCanvas: FC<GraphCanvasProps> = ({ graph, sse }) => {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}                                                     
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
         onPaneClick={onPaneClick}
@@ -442,15 +516,47 @@ const GraphCanvas: FC<GraphCanvasProps> = ({ graph, sse }) => {
           position="bottom-left"
           className="!border-gray-700 !bg-gray-800 [&>button]:!border-gray-700 [&>button]:!bg-gray-800 [&>button]:!text-gray-300 [&>button:hover]:!bg-gray-700"
         />
+
+        {/* EDGE STYLE — legend panel */}
+        <EdgeLegend />
+
         <MiniMap
           nodeColor={minimapColor}
           maskColor="rgba(0, 0, 0, 0.6)"
           className="!border-gray-700 !bg-gray-900"
           position="bottom-right"
         />
+
+        {/* FOCUS MODE indicator overlay */}
+        {focusedNodeId && (                                                         /* FOCUS MODE */
+          <Panel position="top-center">                                             {/* FOCUS MODE */}
+            <div className="bg-gray-800 border border-gray-600 rounded-full px-4 py-1.5 text-xs text-gray-300 flex items-center gap-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              <span>
+                Focused: {getFocusedNodeName(focusedNodeId)}
+              </span>
+              <button
+                onClick={() => setFocusedNodeId(null)}
+                className="text-gray-500 hover:text-white ml-1"
+              >
+                ✕
+              </button>
+            </div>
+          </Panel>                                                                  /* FOCUS MODE */
+        )}
       </ReactFlow>
 
-      {/* ---- Filter toggle button (top-right) ---- */}
+      {/* FILTER CONTROLS — floating graph controls panel */}
+      <GraphControls                                                              // FILTER CONTROLS
+        onFilterChange={graph.setControlFilters}                                  // FILTER PIPELINE
+        stats={{                                                                  // FILTER CONTROLS
+          total:   graph.nodes.length,                                            // FILTER CONTROLS
+          visible: rfNodes.length,                                                // FILTER CONTROLS
+          failing: graph.nodes.filter(                                            // FILTER CONTROLS
+            n => n.data?.runtime_status === 'error'                               // FILTER CONTROLS
+          ).length,                                                               // FILTER CONTROLS
+        }}                                                                        // FILTER CONTROLS
+      />
       <div className="absolute right-4 top-4 z-40">
         <button
           onClick={() => setFilterOpen((p) => !p)}
@@ -521,6 +627,13 @@ const GraphCanvas: FC<GraphCanvasProps> = ({ graph, sse }) => {
               }),
             );
           }}
+          onNodeSelect={(n) => {                                                   // INTERCONNECTIONS
+            setSelectedNode(n);                                                    // INTERCONNECTIONS
+            setFocusedNodeId(n.id);                                                // INTERCONNECTIONS
+          }}                                                                        // INTERCONNECTIONS
+          onFocusNode={(nodeId) => {                                                // INTERCONNECTIONS
+            setFocusedNodeId(nodeId);                                               // INTERCONNECTIONS
+          }}                                                                        // INTERCONNECTIONS
         />
       )}
     </div>

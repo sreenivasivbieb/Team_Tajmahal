@@ -1,5 +1,6 @@
 // ---------------------------------------------------------------------------
 // panels/DetailPanel.tsx — Slide-in detail panel for selected nodes
+// SHADCN: replaced Section/Badge/ScrollArea/Separator/Button with shadcn/ui
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState, type FC } from 'react';
@@ -7,15 +8,79 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import type { GraphNode, NodeDetail, RuntimeEvent } from '../../types/graph';
 import { api } from '../../api/client';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'; // SHADCN: replaced Section
+import { Badge } from '@/components/ui/badge';                                    // SHADCN: replaced TypeBadge/StatusBadge
+import { Button } from '@/components/ui/button';                                  // SHADCN: replaced <button>
+import { Separator } from '@/components/ui/separator';                            // SHADCN: replaced border-b dividers
+import { ScrollArea } from '@/components/ui/scroll-area';                         // SHADCN: replaced overflow scroll
 
 interface DetailPanelProps {
   node: GraphNode;
   onClose: () => void;
   onNavigate: (nodeId: string) => void;
   onNodeHighlight?: (nodeId: string) => void;
+  onNodeSelect?: (node: GraphNode) => void;                                       // INTERCONNECTIONS
+  onFocusNode?: (nodeId: string) => void;                                         // INTERCONNECTIONS
 }
 
-const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHighlight }) => {
+// ---------------------------------------------------------------------------  // INTERCONNECTIONS
+// Connection grouping for structured Interconnections view                     // INTERCONNECTIONS
+// ---------------------------------------------------------------------------  // INTERCONNECTIONS
+
+interface ConnectionGroup {                                                       // INTERCONNECTIONS
+  label:    string                                                                // INTERCONNECTIONS
+  nodes:    GraphNode[]                                                           // INTERCONNECTIONS
+  edgeType: string                                                                // INTERCONNECTIONS
+  color:    string                                                                // INTERCONNECTIONS
+  icon:     string                                                                // INTERCONNECTIONS
+}                                                                                 // INTERCONNECTIONS
+
+const buildConnectionGroups = (                                                   // INTERCONNECTIONS
+  node: GraphNode,                                                                // INTERCONNECTIONS
+  nodeDetail: NodeDetail | null                                                   // INTERCONNECTIONS
+): ConnectionGroup[] => {                                                         // INTERCONNECTIONS
+  if (!nodeDetail) return []                                                      // INTERCONNECTIONS
+
+  return [                                                                        // INTERCONNECTIONS
+    {                                                                             // INTERCONNECTIONS
+      label:    'Called By',                                                      // INTERCONNECTIONS
+      nodes:    nodeDetail.callers ?? [],                                         // INTERCONNECTIONS
+      edgeType: 'calls',                                                          // INTERCONNECTIONS
+      color:    'text-blue-400',                                                  // INTERCONNECTIONS
+      icon:     '\u2190 ',                                                        // INTERCONNECTIONS
+    },                                                                            // INTERCONNECTIONS
+    {                                                                             // INTERCONNECTIONS
+      label:    'Calls',                                                          // INTERCONNECTIONS
+      nodes:    nodeDetail.callees ?? [],                                         // INTERCONNECTIONS
+      edgeType: 'calls',                                                          // INTERCONNECTIONS
+      color:    'text-blue-400',                                                  // INTERCONNECTIONS
+      icon:     '\u2192 ',                                                        // INTERCONNECTIONS
+    },                                                                            // INTERCONNECTIONS
+    {                                                                             // INTERCONNECTIONS
+      label:    'Cloud Dependencies',                                             // INTERCONNECTIONS
+      nodes:    ((nodeDetail as unknown as Record<string, unknown>).cloud_deps as GraphNode[] | undefined) ?? [], // INTERCONNECTIONS
+      edgeType: 'depends_on',                                                     // INTERCONNECTIONS
+      color:    'text-yellow-400',                                                // INTERCONNECTIONS
+      icon:     '\u2601 ',                                                        // INTERCONNECTIONS
+    },                                                                            // INTERCONNECTIONS
+    {                                                                             // INTERCONNECTIONS
+      label:    'Implements',                                                     // INTERCONNECTIONS
+      nodes:    ((nodeDetail as unknown as Record<string, unknown>).implements as GraphNode[] | undefined) ?? [], // INTERCONNECTIONS
+      edgeType: 'implements',                                                     // INTERCONNECTIONS
+      color:    'text-purple-400',                                                // INTERCONNECTIONS
+      icon:     '\u2283 ',                                                        // INTERCONNECTIONS
+    },                                                                            // INTERCONNECTIONS
+    {                                                                             // INTERCONNECTIONS
+      label:    'Produces To',                                                    // INTERCONNECTIONS
+      nodes:    ((nodeDetail as unknown as Record<string, unknown>).produces_to as GraphNode[] | undefined) ?? [], // INTERCONNECTIONS
+      edgeType: 'produces_to',                                                    // INTERCONNECTIONS
+      color:    'text-green-400',                                                 // INTERCONNECTIONS
+      icon:     '\u2192 queue ',                                                  // INTERCONNECTIONS
+    },                                                                            // INTERCONNECTIONS
+  ].filter(g => g.nodes.length > 0)                                               // INTERCONNECTIONS
+}                                                                                 // INTERCONNECTIONS
+
+const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHighlight, onNodeSelect, onFocusNode }) => {
   const [detail, setDetail] = useState<NodeDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
@@ -179,34 +244,60 @@ const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHi
   const m = node.metadata;
 
   return (
-    <div className="animate-slide-in-right absolute right-0 top-0 z-50 flex h-full w-[400px] flex-col border-l border-gray-700 bg-gray-900 shadow-2xl">
+    <div className="animate-slide-in-right absolute right-0 top-0 z-50 flex h-full w-[400px] flex-col border-l border-border bg-gray-900 shadow-2xl">
       {/* Header */}
-      <div className="flex items-start justify-between border-b border-gray-700 px-4 py-3">
+      <div className="flex items-start justify-between border-b border-border px-4 py-3">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-base font-semibold text-gray-100">
             {node.name}
           </h2>
           <div className="mt-1 flex items-center gap-2">
-            <TypeBadge type={node.type} />
-            <StatusBadge status={node.runtime_status} />
+            {/* SHADCN: replaced TypeBadge with Badge variant="secondary" */}
+            <Badge variant="secondary" className="text-[10px]">{node.type}</Badge>
+            {/* SHADCN: replaced StatusBadge with Badge */}
+            <Badge
+              variant={node.runtime_status === 'error' ? 'destructive' : 'outline'}
+              className={`text-[10px] ${
+                node.runtime_status === 'healthy'
+                  ? 'border-green-700 bg-green-900 text-green-300'
+                  : node.runtime_status === 'degraded'
+                    ? 'border-yellow-700 bg-yellow-900 text-yellow-300'
+                    : ''
+              }`}
+            >
+              {node.runtime_status || 'unknown'}
+            </Badge>
           </div>
           {node.file_path && (
             <div className="mt-1 truncate text-[11px] text-gray-500">
               {node.file_path}
               {node.line_start > 0 && `:${node.line_start}–${node.line_end}`}
             </div>
-          )}
-        </div>
-        <button
+          )}          {/* INTERCONNECTIONS — Focus on graph button */}
+          {/* SHADCN: replaced <button> with <Button> */}
+          <Button                                                                 // INTERCONNECTIONS
+            variant="ghost"                                                       // SHADCN: ghost variant
+            size="sm"                                                             // SHADCN: small size
+            onClick={() => onFocusNode?.(node.id)}                                // INTERCONNECTIONS
+            className="mt-1.5 h-auto px-0 text-xs text-blue-400                   
+                       hover:text-blue-300 flex items-center gap-1"              // INTERCONNECTIONS
+          >                                                                       {/* INTERCONNECTIONS */}
+            <span>{'\u2299'}</span>                                               {/* INTERCONNECTIONS */}
+            <span>Focus on graph</span>                                           {/* INTERCONNECTIONS */}
+          </Button>                                                               {/* INTERCONNECTIONS */}        </div>
+        {/* SHADCN: replaced close button with <Button> */}
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={onClose}
-          className="ml-2 shrink-0 rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+          className="ml-2 shrink-0 h-7 w-7 p-0 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
         >
           ✕
-        </button>
+        </Button>
       </div>
 
-      {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 text-sm">
+      {/* SHADCN: replaced overflow-y-auto with ScrollArea */}
+      <ScrollArea className="flex-1 px-4 py-3 text-sm">
         {loading && <Spinner />}
 
         {/* 1. Metadata */}
@@ -275,12 +366,15 @@ const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHi
         {node.type === 'function' && m?.source_snippet && (
           <Section title="Source" open={isOpen('source')} onToggle={() => toggle('source')}>
             <div className="relative">
-              <button
+              {/* SHADCN: replaced copy button with <Button> */}
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={handleCopySnippet}
-                className="absolute right-2 top-2 z-10 rounded bg-gray-700 px-2 py-0.5 text-[10px] text-gray-300 transition-colors hover:bg-gray-600"
+                className="absolute right-2 top-2 z-10 h-5 px-2 text-[10px]"
               >
                 {copied ? '✓ Copied' : 'Copy'}
-              </button>
+              </Button>
               <div className="max-h-64 overflow-auto rounded bg-gray-950">
                 <SyntaxHighlighter
                   language="go"
@@ -301,16 +395,54 @@ const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHi
           </Section>
         )}
 
-        {/* 3. Connections */}
-        <Section title="Connections" open={isOpen('connections')} onToggle={() => toggle('connections')}>
-          {detail ? (
-            <>
-              <ConnList label="Callers" nodes={detail.callers} onNav={onNavigate} />
-              <ConnList label="Callees" nodes={detail.callees} onNav={onNavigate} />
-            </>
-          ) : (
-            !loading && <span className="text-gray-500">–</span>
-          )}
+        {/* 3. Interconnections */}                                               {/* INTERCONNECTIONS */}
+        <Section title="Interconnections" open={isOpen('connections')} onToggle={() => toggle('connections')}>
+          {detail ? (                                                             /* INTERCONNECTIONS */
+            (() => {                                                              /* INTERCONNECTIONS */
+              const groups = buildConnectionGroups(node, detail)                   // INTERCONNECTIONS
+              if (groups.length === 0) return (                                    /* INTERCONNECTIONS */
+                <span className="text-[11px] text-gray-500">No connections</span> /* INTERCONNECTIONS */
+              )                                                                   /* INTERCONNECTIONS */
+              return groups.map(group => (                                         /* INTERCONNECTIONS */
+                <div key={group.label} className="mt-2">                          {/* INTERCONNECTIONS */}
+                  <div className={`text-xs uppercase tracking-wider               
+                                   mb-1 ${group.color}`}>                        {/* INTERCONNECTIONS */}
+                    {group.icon}{group.label} ({group.nodes.length})               {/* INTERCONNECTIONS */}
+                  </div>                                                          {/* INTERCONNECTIONS */}
+                  <div className="space-y-0.5">                                   {/* INTERCONNECTIONS */}
+                    {group.nodes.slice(0, 8).map(n => (                            /* INTERCONNECTIONS */
+                      <button                                                     // INTERCONNECTIONS
+                        key={n.id}                                                // INTERCONNECTIONS
+                        onClick={() => onNodeSelect?.(n)}                         // INTERCONNECTIONS
+                        className="w-full text-left flex items-center             
+                                   gap-2 px-2 py-1 rounded text-xs              
+                                   hover:bg-gray-800 group"                      // INTERCONNECTIONS
+                      >                                                           {/* INTERCONNECTIONS */}
+                        <StatusDot status={n.runtime_status} />                   {/* INTERCONNECTIONS */}
+                        <span className="text-gray-300 truncate                   
+                                         group-hover:text-white">                {/* INTERCONNECTIONS */}
+                          {n.name}                                                {/* INTERCONNECTIONS */}
+                        </span>                                                   {/* INTERCONNECTIONS */}
+                        {n.error_count > 0 && (                                   /* INTERCONNECTIONS */
+                          <span className="ml-auto text-red-400                   
+                                           shrink-0">                            {/* INTERCONNECTIONS */}
+                            {n.error_count} err                                   {/* INTERCONNECTIONS */}
+                          </span>                                                 /* INTERCONNECTIONS */
+                        )}                                                        {/* INTERCONNECTIONS */}
+                      </button>                                                   /* INTERCONNECTIONS */
+                    ))}                                                           {/* INTERCONNECTIONS */}
+                    {group.nodes.length > 8 && (                                  /* INTERCONNECTIONS */
+                      <div className="text-xs text-gray-600 px-2">               {/* INTERCONNECTIONS */}
+                        +{group.nodes.length - 8} more                            {/* INTERCONNECTIONS */}
+                      </div>                                                      /* INTERCONNECTIONS */
+                    )}                                                            {/* INTERCONNECTIONS */}
+                  </div>                                                          {/* INTERCONNECTIONS */}
+                </div>                                                            /* INTERCONNECTIONS */
+              ))                                                                  /* INTERCONNECTIONS */
+            })()                                                                  /* INTERCONNECTIONS */
+          ) : (                                                                   /* INTERCONNECTIONS */
+            !loading && <span className="text-gray-500">\u2013</span>             /* INTERCONNECTIONS */
+          )}                                                                      {/* INTERCONNECTIONS */}
         </Section>
 
         {/* 4. Data Flow (for functions) */}
@@ -343,21 +475,25 @@ const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHi
         {/* 6. AI Panel */}
         <Section title="AI" open={isOpen('ai')} onToggle={() => toggle('ai')}>
           <div className="flex gap-2">
-            <button
+            {/* SHADCN: replaced <button> with <Button> */}
+            <Button
               onClick={handleExplain}
               disabled={aiLoading}
-              className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+              size="sm"
+              className="text-xs"
             >
               Explain this
-            </button>
+            </Button>
             {node.error_count > 0 && (
-              <button
+              <Button
                 onClick={handleWhyFailing}
                 disabled={aiLoading}
-                className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-500 disabled:opacity-50"
+                variant="destructive"
+                size="sm"
+                className="text-xs"
               >
                 Why failing?
-              </button>
+              </Button>
             )}
           </div>
 
@@ -377,12 +513,15 @@ const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHi
           {aiError && !aiLoading && (
             <div className="mt-2 flex items-center gap-2 rounded bg-red-900/40 px-2.5 py-1.5 text-[11px]">
               <span className="text-red-400">AI explanation failed</span>
-              <button
+              {/* SHADCN: replaced retry button with <Button> */}
+              <Button
                 onClick={handleRetryAi}
-                className="ml-auto shrink-0 rounded bg-red-800 px-2 py-0.5 text-[10px] font-medium text-red-200 transition-colors hover:bg-red-700"
+                variant="destructive"
+                size="sm"
+                className="ml-auto h-5 px-2 text-[10px]"
               >
                 Retry
-              </button>
+              </Button>
             </div>
           )}
 
@@ -397,7 +536,7 @@ const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHi
             </div>
           )}
         </Section>
-      </div>
+      </ScrollArea>
     </div>
   );
 };
@@ -408,29 +547,7 @@ export default DetailPanel;
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function TypeBadge({ type }: { type: string }) {
-  return (
-    <span className="rounded bg-gray-700 px-1.5 py-0.5 text-[10px] font-medium text-gray-300">
-      {type}
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    healthy: 'bg-green-900 text-green-300',
-    degraded: 'bg-yellow-900 text-yellow-300',
-    error: 'bg-red-900 text-red-300',
-  };
-  return (
-    <span
-      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${colors[status] ?? 'bg-gray-700 text-gray-400'}`}
-    >
-      {status || 'unknown'}
-    </span>
-  );
-}
-
+// SHADCN: replaced hand-written Section with Collapsible
 function Section({
   title,
   open,
@@ -443,16 +560,18 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="border-b border-gray-800 py-2">
-      <button
-        onClick={onToggle}
-        className="flex w-full items-center justify-between text-xs font-semibold text-gray-300"
-      >
-        {title}
-        <span className="text-gray-500">{open ? '▾' : '▸'}</span>
-      </button>
-      {open && <div className="mt-1.5">{children}</div>}
-    </div>
+    <Collapsible open={open} onOpenChange={onToggle}>
+      <Separator className="my-0" />
+      <CollapsibleTrigger asChild>
+        <button className="flex w-full items-center justify-between py-2 text-xs font-semibold text-gray-300">
+          {title}
+          <span className="text-gray-500">{open ? '▾' : '▸'}</span>
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mb-2">{children}</div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -545,6 +664,21 @@ function EventRow({ event }: { event: RuntimeEvent }) {
     </div>
   );
 }
+
+function StatusDot({ status }: { status: string }) {                              // INTERCONNECTIONS
+  const c: Record<string, string> = {                                             // INTERCONNECTIONS
+    healthy: 'bg-green-400',                                                      // INTERCONNECTIONS
+    error: 'bg-red-400',                                                          // INTERCONNECTIONS
+    degraded: 'bg-yellow-400',                                                    // INTERCONNECTIONS
+  };                                                                              // INTERCONNECTIONS
+  return (                                                                        // INTERCONNECTIONS
+    <span                                                                         // INTERCONNECTIONS
+      className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${             
+        c[status] ?? 'bg-gray-500'                                                // INTERCONNECTIONS
+      }`}                                                                         // INTERCONNECTIONS
+    />                                                                            // INTERCONNECTIONS
+  );                                                                              // INTERCONNECTIONS
+}                                                                                 // INTERCONNECTIONS
 
 function Spinner() {
   return (
