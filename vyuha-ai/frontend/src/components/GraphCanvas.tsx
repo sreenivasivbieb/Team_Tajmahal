@@ -21,6 +21,9 @@ import FunctionNode from './nodes/FunctionNode';
 import CloudNode from './nodes/CloudNode';
 import DataFlowNode from './nodes/DataFlowNode';
 import GenericNode from './nodes/GenericNode';
+import PackageNode from './nodes/PackageNode';
+import StructNode from './nodes/StructNode';
+import InterfaceNode from './nodes/InterfaceNode';
 import BundledEdge from './edges/BundledEdge';                                     // BUNDLE
 import DetailPanel from './panels/DetailPanel';
 import {                                                                            // FILTER CONTROLS
@@ -295,10 +298,10 @@ const GraphCanvas: FC<GraphCanvasProps> = ({
       functionNode: FunctionNode,
       cloudNode: CloudNode,
       dataFlowNode: DataFlowNode,
-      packageNode: GenericNode,
+      packageNode: PackageNode,
       fileNode: GenericNode,
-      structNode: GenericNode,
-      interfaceNode: GenericNode,
+      structNode: StructNode,
+      interfaceNode: InterfaceNode,
       repositoryNode: GenericNode,
       runtimeNode: GenericNode,
     }),
