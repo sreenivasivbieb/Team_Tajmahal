@@ -120,43 +120,67 @@ const App: FC = () => {
   );
 
   // Poll scan job until complete, then reload services
-  const pollScanJob = useCallback(async (jobId: string) => {
-    let attempts = 0;
-    const poll = async () => {
-      attempts++;
-      try {
-        const status = await api.getScanStatus(jobId);
-        if (!status) {
-          // Null response — scan may have completed before first poll
-          setIsScanning(false);
-          setNeedsSetup(false);
-          graph.loadServices();
-          return;
-        }
-        if (status.status === 'complete' || status.status === 'completed') {
-          setIsScanning(false);
-          setNeedsSetup(false);
-          graph.loadServices();
-        } else if (status.status === 'failed' || status.status === 'error') {
-          setIsScanning(false);
-          setScanError(status.error || 'Scan failed');
-        } else {
-          // still scanning — poll again (max 60 attempts)
-          if (attempts < 60) setTimeout(poll, 1000);
-          else {
+  const pollScanJob = useCallback(
+    async (jobId: string) => {
+      let attempts = 0;
+      let networkFailures = 0;
+
+      const poll = async () => {
+        attempts++;
+        try {
+          const status = await api.getScanStatus(jobId);
+          networkFailures = 0;
+
+          if (!status) {
             setIsScanning(false);
+            setNeedsSetup(false);
             graph.loadServices();
+            return;
+          }
+          if (status.status === 'complete' || status.status === 'completed') {
+            setIsScanning(false);
+            setNeedsSetup(false);
+            graph.loadServices();
+          } else if (status.status === 'failed' || status.status === 'error') {
+            setIsScanning(false);
+            setScanError(status.error || 'Scan failed');
+          } else {
+            if (attempts < 120) {
+              setTimeout(poll, 1000);
+            } else {
+              setIsScanning(false);
+              setScanError(
+                'Scan timed out after 2 minutes. The scan may still be running — try refreshing.',
+              );
+            }
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+
+          if (msg.includes('404') || msg.includes('not found')) {
+            setIsScanning(false);
+            setNeedsSetup(false);
+            graph.loadServices();
+            return;
+          }
+
+          networkFailures++;
+          if (networkFailures < 3 && attempts < 120) {
+            setTimeout(poll, 2000 * networkFailures);
+          } else {
+            setIsScanning(false);
+            setScanError(
+              `Lost connection while scanning: ${msg}. Try rescanning.`,
+            );
           }
         }
-      } catch {
-        // Scan job may have expired — assume success and reload
-        setIsScanning(false);
-        setNeedsSetup(false);
-        graph.loadServices();
-      }
-    };
-    setTimeout(poll, 1000);
-  }, [graph]);
+      };
+
+      setTimeout(poll, 1000);
+    },
+    [graph],
+  );
+
 
   // Scan a given path (used by setup modal and rescan)
   const doScan = useCallback(async (rootPath: string) => {
