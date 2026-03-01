@@ -310,7 +310,7 @@ const GraphCanvas: FC<GraphCanvasProps> = ({
     [],
   );
   const edgeTypes = useMemo(() => ({ bundled: BundledEdge }), []);                 // BUNDLE
-  const { setCenter, getNode } = useReactFlow();
+  const { setCenter, getNode, fitView } = useReactFlow();
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(graph.nodes);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(graph.edges);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -372,6 +372,15 @@ const GraphCanvas: FC<GraphCanvasProps> = ({
 
     return () => clearTimeout(timer);
   }, [navigateToNodeId, onNavigationComplete, setCenter, getNode]);
+
+  // Listen for keyboard shortcut fit-view event
+  useEffect(() => {
+    function handleFitView() {
+      fitView({ padding: 0.1, duration: 400 });
+    }
+    window.addEventListener('vyuha-fit-view', handleFitView);
+    return () => window.removeEventListener('vyuha-fit-view', handleFitView);
+  }, [fitView]);
 
   // Node click → toggle focus + open detail panel                                 // FOCUS MODE
   const onNodeClick: NodeMouseHandler = useCallback((_event, node: RFNode) => {

@@ -2,7 +2,7 @@
 // App.tsx — Main application shell
 // ---------------------------------------------------------------------------
 
-import { useCallback, useEffect, useRef, useState, type FC } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
 import GraphCanvas from './components/GraphCanvas';
 import StatusBar from './components/StatusBar';
 import QueryBar from './components/panels/QueryBar';
@@ -16,6 +16,7 @@ import { api } from './api/client';
 import type { QueryDecision } from './types/graph';
 import { applyDagreLayout } from './hooks/useGraph';
 import { nodeTypeToRF } from './utils/nodeMapping';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 const App: FC = () => {
   const graph = useGraph();
@@ -225,6 +226,41 @@ const App: FC = () => {
     },
     [],
   );
+
+  // Keyboard shortcut handlers
+  const shortcutHandlers = useMemo(
+    () => ({
+      onFocusQueryBar: () => {
+        const input = document.getElementById('vyuha-query-input');
+        if (input) {
+          (input as HTMLInputElement).focus();
+          (input as HTMLInputElement).select();
+        }
+      },
+      onClosePanel: () => {
+        if (showAgent) {
+          setShowAgent(false);
+          sse.clearAgentSteps();
+        } else if (showIngestion) {
+          setShowIngestion(false);
+        } else if (needsSetup && !isScanning) {
+          setNeedsSetup(false);
+        }
+      },
+      onRescan: () => {
+        const saved = rootPathRef.current;
+        if (saved && !isScanning) {
+          doScan(saved);
+        }
+      },
+      onFitView: () => {
+        window.dispatchEvent(new CustomEvent('vyuha-fit-view'));
+      },
+    }),
+    [showAgent, showIngestion, needsSetup, isScanning, sse, doScan],
+  );
+
+  useKeyboardShortcuts(shortcutHandlers);
 
   return (
     <div className="flex h-screen w-screen flex-col bg-gray-950 text-gray-100">

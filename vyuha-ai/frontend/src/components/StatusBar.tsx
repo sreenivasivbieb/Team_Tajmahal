@@ -489,6 +489,30 @@ const StatusBar: FC<StatusBarProps> = ({
           >
             {scanning ? 'Scanning…' : 'Rescan'}
           </Button>
+
+          <Separator orientation="vertical" className="mx-0.5 h-3" />
+
+          {/* Keyboard shortcut hints — visible on large screens only */}
+          <div className="hidden items-center gap-2 text-[10px] text-gray-500 lg:flex">
+            <span>
+              <kbd className="rounded border border-gray-700 bg-gray-800 px-1 py-0.5 text-[9px] font-mono">
+                ⌘K
+              </kbd>{' '}
+              Search
+            </span>
+            <span>
+              <kbd className="rounded border border-gray-700 bg-gray-800 px-1 py-0.5 text-[9px] font-mono">
+                F
+              </kbd>{' '}
+              Fit
+            </span>
+            <span>
+              <kbd className="rounded border border-gray-700 bg-gray-800 px-1 py-0.5 text-[9px] font-mono">
+                Esc
+              </kbd>{' '}
+              Close
+            </span>
+          </div>
         </div>
       </div>
       </TooltipProvider>

@@ -86,6 +86,7 @@ const QueryBar: FC<QueryBarProps> = ({ onResult, isRunning }) => {
       <form onSubmit={handleSubmit} className="flex items-center gap-2">
         {/* SHADCN: replaced <input> with <Input> */}
         <Input
+          id="vyuha-query-input"
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
