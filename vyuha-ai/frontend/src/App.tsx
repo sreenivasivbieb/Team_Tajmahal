@@ -15,6 +15,7 @@ import { useAgent } from './hooks/useAgent';
 import { api } from './api/client';
 import type { QueryDecision, GraphNode } from './types/graph';
 import Breadcrumbs from './components/Breadcrumbs';
+import ScanDiffBanner, { type ScanDiff } from './components/ScanDiffBanner';
 import { applyDagreLayout } from './hooks/useGraph';
 import { nodeTypeToRF } from './utils/nodeMapping';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -31,7 +32,9 @@ const App: FC = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [navigateToNodeId, setNavigateToNodeId] = useState<string | null>(null);
   const [breadcrumbNode, setBreadcrumbNode] = useState<GraphNode | null>(null);
+  const [scanDiff, setScanDiff] = useState<ScanDiff | null>(null);
   const rootPathRef = useRef<string>(localStorage.getItem('vyuha_root_path') || '');
+  const preRescanCounts = useRef<{ nodes: number; edges: number } | null>(null);
 
   // Load services on mount — if none found, show setup modal
   useEffect(() => {
@@ -123,6 +126,28 @@ const App: FC = () => {
     [graph, agent],
   );
 
+  // Compute diff between pre-rescan counts and current graph
+  const computeScanDiff = useCallback(() => {
+    const pre = preRescanCounts.current;
+    if (!pre) return;
+    const curNodes = graph.nodes.length;
+    const curEdges = graph.edges.length;
+    const nodesAdded = Math.max(0, curNodes - pre.nodes);
+    const nodesRemoved = Math.max(0, pre.nodes - curNodes);
+    const edgesAdded = Math.max(0, curEdges - pre.edges);
+    const edgesRemoved = Math.max(0, pre.edges - curEdges);
+    setScanDiff({
+      nodesAdded,
+      nodesRemoved,
+      nodesModified: 0,
+      edgesAdded,
+      edgesRemoved,
+      totalNodes: curNodes,
+      totalEdges: curEdges,
+    });
+    preRescanCounts.current = null;
+  }, [graph.nodes.length, graph.edges.length]);
+
   // Poll scan job until complete, then reload services
   const pollScanJob = useCallback(
     async (jobId: string) => {
@@ -144,7 +169,7 @@ const App: FC = () => {
           if (status.status === 'complete' || status.status === 'completed') {
             setIsScanning(false);
             setNeedsSetup(false);
-            graph.loadServices();
+            graph.loadServices().then(() => setTimeout(computeScanDiff, 1500));
           } else if (status.status === 'failed' || status.status === 'error') {
             setIsScanning(false);
             setScanError(status.error || 'Scan failed');
@@ -182,12 +207,14 @@ const App: FC = () => {
 
       setTimeout(poll, 1000);
     },
-    [graph],
+    [graph, computeScanDiff],
   );
 
 
   // Scan a given path (used by setup modal and rescan)
   const doScan = useCallback(async (rootPath: string) => {
+    preRescanCounts.current = { nodes: graph.nodes.length, edges: graph.edges.length };
+    setScanDiff(null);
     setScanError(null);
     setIsScanning(true);
     try {
@@ -201,14 +228,14 @@ const App: FC = () => {
         setTimeout(() => {
           setIsScanning(false);
           setNeedsSetup(false);
-          graph.loadServices();
+          graph.loadServices().then(() => setTimeout(computeScanDiff, 1500));
         }, 1500);
       }
     } catch (e) {
       setIsScanning(false);
       setScanError(e instanceof Error ? e.message : String(e));
     }
-  }, [graph, pollScanJob]);
+  }, [graph, pollScanJob, computeScanDiff]);
 
   // Rescan handler — reuses saved path or prompts setup
   const handleRescan = useCallback(async () => {
@@ -289,6 +316,13 @@ const App: FC = () => {
 
   useKeyboardShortcuts(shortcutHandlers);
 
+  // Auto-dismiss scan diff banner after 15 seconds
+  useEffect(() => {
+    if (!scanDiff) return;
+    const timer = setTimeout(() => setScanDiff(null), 15000);
+    return () => clearTimeout(timer);
+  }, [scanDiff]);
+
   return (
     <div className="flex h-screen w-screen flex-col bg-gray-950 text-gray-100">
       {/* Scan error banner */}
@@ -313,6 +347,9 @@ const App: FC = () => {
           </button>
         </div>
       )}
+
+      {/* Scan diff banner */}
+      {scanDiff && <ScanDiffBanner diff={scanDiff} onDismiss={() => setScanDiff(null)} />}
 
       {/* Query bar */}
       <QueryBar onResult={handleQueryResult} isRunning={agent.isRunning} />
