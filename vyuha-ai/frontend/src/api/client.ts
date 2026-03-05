@@ -1,31 +1,11 @@
 // ---------------------------------------------------------------------------
-// api/client.ts — Typed API client for the VYUHA AI backend
+// api/client.ts — Typed API client for the contextplus-backed backend
 // ---------------------------------------------------------------------------
 
-import type {
-  AIJob,
-  BatchIngestResponse,
-  DataFlowRecord,
-  GraphEdge,
-  GraphNode,
-  GraphStats,
-  IngestResponse,
-  LogEvent,
-  NodeDetail,
-  NodeFailureStat,
-  QueryDecision,
-  RuntimeEvent,
-  ScanResponse,
-  ScanStatus,
-  SubgraphResult,
-  TraceResult,
-  WatchStatus,
-} from '../types/graph';
+import type { CallChainResponse, NodeDetail, QueryDecision, TextResult } from '../types/graph';
 
 const BASE = '/api';
 
-// All backend responses follow the shape { data: <payload> }.
-// requestRaw returns the full JSON; request unwraps `.data` automatically.
 async function requestRaw<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -43,10 +23,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return json.data;
 }
 
-function get<T>(path: string): Promise<T> {
-  return request<T>(path);
-}
-
 function post<T>(path: string, body: unknown): Promise<T> {
   return request<T>(path, {
     method: 'POST',
@@ -54,234 +30,102 @@ function post<T>(path: string, body: unknown): Promise<T> {
   });
 }
 
-function del<T>(path: string): Promise<T> {
-  return request<T>(path, { method: 'DELETE' });
-}
-
 // ---------------------------------------------------------------------------
-// Helper: convert [{type,count}] array → Record<string,number>
-// ---------------------------------------------------------------------------
-function arrayToRecord(arr: unknown): Record<string, number> {
-  if (Array.isArray(arr)) {
-    const rec: Record<string, number> = {};
-    for (const item of arr) {
-      if (item && typeof item === 'object' && 'type' in item && 'count' in item) {
-        rec[(item as { type: string }).type] = (item as { count: number }).count;
-      }
-    }
-    return rec;
-  }
-  if (arr && typeof arr === 'object') return arr as Record<string, number>;
-  return {};
-}
-
-// ---------------------------------------------------------------------------
-// Public API surface
+// Public API
 // ---------------------------------------------------------------------------
 
 export const api = {
-  // ---- Scan ---------------------------------------------------------------
-
-  /** Trigger a codebase scan. */
-  scan(rootPath: string): Promise<ScanResponse> {
-    // Normalize Windows backslashes to forward slashes for JSON safety
-    const normalized = rootPath.replace(/\\/g, '/');
-    return post<ScanResponse>('/scan', { root_path: normalized });
-  },
-
-  /** Poll scan job status. */
-  getScanStatus(jobId: string): Promise<ScanStatus> {
-    return get<ScanStatus>(`/scan/status?job_id=${encodeURIComponent(jobId)}`);
-  },
-
-  // ---- Graph --------------------------------------------------------------
-
-  /** List all service-level nodes. */
-  async getServices(): Promise<GraphNode[]> {
-    const res = await get<{ services: GraphNode[] }>('/graph/services');
-    return res?.services ?? [];
-  },
-
-  /** Get children subgraph for a parent node. */
-  getChildren(parentId: string, depth: number): Promise<SubgraphResult> {
-    return get<SubgraphResult>(
-      `/graph/children?parent_id=${encodeURIComponent(parentId)}&depth=${depth}`,
-    );
-  },
-
-  /** Extract a focused subgraph. */
-  getSubgraph(targetId: string, queryType: string): Promise<SubgraphResult> {
-    return get<SubgraphResult>(
-      `/graph/subgraph?target_id=${encodeURIComponent(targetId)}&type=${encodeURIComponent(queryType)}`,
-    );
-  },
-
-  /** Get a single node with callers, callees, events. */
-  async getNode(id: string): Promise<NodeDetail> {
-    // Backend returns { node, children, in_edges, out_edges, data_flow, events }
-    // but NodeDetail expects { node, callers, callees, data_flow, recent_events }
-    const raw = await get<{
-      node: GraphNode;
-      children: GraphNode[];
-      in_edges: GraphEdge[];
-      out_edges: GraphEdge[];
-      callers: GraphNode[];
-      callees: GraphNode[];
-      data_flow?: DataFlowRecord[];
-      events?: RuntimeEvent[];
-    }>(`/graph/node/${encodeURIComponent(id)}`);
-    return {
-      node: raw.node,
-      callers: raw.callers ?? [],
-      callees: raw.callees ?? [],
-      in_edges: raw.in_edges,
-      out_edges: raw.out_edges,
-      data_flow: raw.data_flow,
-      recent_events: raw.events,
-    };
-  },
-
-  /** Get aggregate graph statistics. */
-  async getStats(): Promise<GraphStats> {
-    const raw = await get<Record<string, unknown>>('/graph/stats');
-    return {
-      total_nodes: (raw.total_nodes as number) ?? 0,
-      total_edges: (raw.total_edges as number) ?? 0,
-      files_indexed: (raw.files_indexed as number) ?? 0,
-      nodes_by_type: arrayToRecord(raw.nodes_by_type),
-      edges_by_type: arrayToRecord(raw.edges_by_type),
-      status_counts: arrayToRecord(raw.status_counts),
-    };
-  },
-
-  /** Search nodes by name (optionally filtered by type). */
-  async searchNodes(q: string, type?: string): Promise<GraphNode[]> {
-    if (!q.trim()) return [];   // backend requires non-empty q
-    let path = `/graph/search?q=${encodeURIComponent(q)}`;
-    if (type) path += `&type=${encodeURIComponent(type)}`;
-    const res = await get<{ nodes: GraphNode[]; total: number }>(path);
-    return res.nodes ?? [];
-  },
-
-  // ---- Runtime / Ingestion ------------------------------------------------
-
-  /** Ingest a single runtime event. */
-  ingestLog(event: LogEvent): Promise<IngestResponse> {
-    return post<IngestResponse>('/ingest/log', event);
-  },
-
-  /** Ingest a batch of runtime events. */
-  ingestLogs(events: LogEvent[]): Promise<BatchIngestResponse> {
-    return post<BatchIngestResponse>('/ingest/logs', { events });
-  },
-
-  /** Get top failing nodes in the given window (e.g. "24h"). */
-  async getFailures(window: string): Promise<NodeFailureStat[]> {
-    const res = await get<{ failures: NodeFailureStat[]; window: string }>(
-      `/runtime/failures?window=${encodeURIComponent(window)}`,
-    );
-    return res.failures ?? [];
-  },
-
-  /** Get all events for a trace. */
-  async getTrace(traceId: string): Promise<TraceResult> {
-    // Backend returns { trace_id, events, duration_ms, status } — no nodes array.
-    const raw = await get<{
-      trace_id: string;
-      events: RuntimeEvent[];
-      duration_ms: number;
-      status: string;
-    }>(`/runtime/trace/${encodeURIComponent(traceId)}`);
-    return {
-      trace_id: raw.trace_id,
-      events: raw.events ?? [],
-      nodes: [],
-    };
-  },
-
-  // ---- AI / Query ---------------------------------------------------------
-
-  /** Load demo data (no repository path needed). */
-  loadDemo(): Promise<{ message: string; nodes: number; edges: number }> {
-    return post<{ message: string; nodes: number; edges: number }>('/demo/load', {});
-  },
-
-  /** Ask a natural-language question about the codebase. */
-  askQuestion(question: string): Promise<QueryDecision> {
-    return post<QueryDecision>('/ai/query', { question });
-  },
-
-  /** Get the status / result of an AI job. */
-  getJob(jobId: string): Promise<AIJob> {
-    return get<AIJob>(`/ai/jobs/${encodeURIComponent(jobId)}`);
-  },
-
-  // ---- Watch / File Tailing -----------------------------------------------
-
-  /** Start watching a log file for new events. */
-  startWatch(filePath: string): Promise<{ status: string; file: string }> {
-    return post<{ status: string; file: string }>('/ingest/watch', { file_path: filePath });
-  },
-
-  /** Stop watching the current log file. */
-  stopWatch(): Promise<{ status: string }> {
-    return del<{ status: string }>('/ingest/watch');
-  },
-
-  /** Get the current watch/tailer status. */
-  getWatchStatus(): Promise<WatchStatus> {
-    return get<WatchStatus>('/ingest/watch');
-  },
-
-  // ---- Quick-inject helpers -----------------------------------------------
-
-  /**
-   * Inject a synthetic error event for a node.
-   * Uses the raw backend shape (service/function/file), not the LogEvent type.
-   */
-  injectError(node: {
-    service: string;
-    name: string;
-    file_path: string;
-  }): Promise<IngestResponse> {
-    return post<IngestResponse>('/ingest/log', {
-      service: node.service,
-      function: node.name,
-      file: node.file_path,
-      trace_id: crypto.randomUUID(),
-      status: 'error',
-      event_type: 'ERROR',
-      error: 'connection refused: dial tcp :5432',
-      latency_ms: 5000,
-      timestamp: new Date().toISOString(),
+  /** Get call chain for a symbol → structured nodes/edges/meta. */
+  callChain(symbolName: string, filePath?: string, maxDepth?: number): Promise<CallChainResponse> {
+    return post<CallChainResponse>('/call-chain', {
+      symbol_name: symbolName,
+      file_path: filePath,
+      max_depth: maxDepth ?? 5,
     });
   },
 
-  /**
-   * Send a success/recovery event for each given node.
-   * Returns the count of successfully recovered nodes.
-   */
-  async recoverAll(
-    nodes: Array<{ service: string; name: string; file_path: string }>,
-  ): Promise<number> {
-    let recovered = 0;
-    for (const n of nodes) {
-      try {
-        await post<IngestResponse>('/ingest/log', {
-          service: n.service,
-          function: n.name,
-          file: n.file_path,
-          trace_id: crypto.randomUUID(),
-          status: 'success',
-          event_type: 'RECOVERY',
-          latency_ms: 25,
-          timestamp: new Date().toISOString(),
-        });
-        recovered++;
-      } catch {
-        // best-effort — continue to next node
-      }
-    }
-    return recovered;
+  /** Semantic code search → text result. */
+  search(query: string, topK?: number): Promise<TextResult> {
+    return post<TextResult>('/search', { query, top_k: topK });
+  },
+
+  /** Get context tree for the codebase or a specific path. */
+  contextTree(targetPath?: string): Promise<TextResult> {
+    return post<TextResult>('/context-tree', { target_path: targetPath });
+  },
+
+  /** Get file skeleton (signatures, structure). */
+  skeleton(filePath: string): Promise<TextResult> {
+    return post<TextResult>('/skeleton', { file_path: filePath });
+  },
+
+  /** Get blast radius for a symbol. */
+  blastRadius(symbolName: string, fileContext?: string): Promise<TextResult> {
+    return post<TextResult>('/blast-radius', { symbol_name: symbolName, file_context: fileContext });
+  },
+
+  /** Search identifiers (function/class/variable names). */
+  identifierSearch(query: string, topK?: number): Promise<TextResult> {
+    return post<TextResult>('/identifier-search', { query, top_k: topK });
+  },
+
+  /** Run static analysis on a path. */
+  staticAnalysis(targetPath?: string): Promise<TextResult> {
+    return post<TextResult>('/static-analysis', { target_path: targetPath });
+  },
+
+  /** Scan a repository — builds the semantic tree via contextplus. */
+  scanRepo(repoPath: string): Promise<{ tree: string; symbol_count: number; ready: boolean }> {
+    return post<{ tree: string; symbol_count: number; ready: boolean }>('/scan-repo', {
+      repo_path: repoPath,
+    });
+  },
+
+  /** Clone a GitHub repo, then build semantic tree. */
+  cloneRepo(githubUrl: string): Promise<{
+    name: string;
+    local_path: string;
+    tree: string;
+    symbol_count: number;
+    ready: boolean;
+  }> {
+    return post('/clone-repo', { github_url: githubUrl });
+  },
+
+  /** Agentic RAG — ask a natural-language question about the codebase.
+   *  When repoPath is provided, the RAG session targets that specific repo
+   *  directory so tools only access the already-built context tree / index. */
+  ragQuery(question: string, repoPath?: string): Promise<{ answer: string }> {
+    return post('/rag-query', { question, repo_path: repoPath });
+  },
+
+  /** Get expanded detail for a single node by ID. */
+  getNode(nodeId: string): Promise<NodeDetail> {
+    return post<NodeDetail>('/node', { node_id: nodeId });
+  },
+
+  /** Ask the agent a question about the codebase. */
+  askQuestion(question: string): Promise<QueryDecision> {
+    return post<QueryDecision>('/ask', { question });
+  },
+
+  /** Get the current status of a scan job. */
+  getScanStatus(jobId: string): Promise<{ status: string; error?: string } | null> {
+    return request<{ status: string; error?: string } | null>(`/scan-status/${jobId}`);
+  },
+
+  /** Start a full scan of the given root path. */
+  scan(rootPath: string): Promise<{ job_id?: string }> {
+    return post<{ job_id?: string }>('/scan', { root_path: rootPath });
+  },
+
+  /** Load built-in demo data. */
+  loadDemo(): Promise<void> {
+    return post<void>('/load-demo', {});
+  },
+
+  /** Get overall graph stats. */
+  getStats(): Promise<{ total_nodes?: number; total_edges?: number } | null> {
+    return request<{ total_nodes?: number; total_edges?: number } | null>('/stats');
   },
 };

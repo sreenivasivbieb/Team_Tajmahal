@@ -4,11 +4,11 @@
 // ---------------------------------------------------------------------------  // FILTER CONTROLS
 
 import { useState } from 'react';                                                // FILTER CONTROLS
-import { Button } from '@/components/ui/button';                                  // SHADCN: replaced <button>
-import { Switch } from '@/components/ui/switch';                                  // SHADCN: replaced checkboxes
-import { Slider } from '@/components/ui/slider';                                  // SHADCN: replaced <input type="range">
-import { Badge } from '@/components/ui/badge';                                    // SHADCN: replaced stat badge
-import { Separator } from '@/components/ui/separator';                            // SHADCN: section dividers
+import { Button } from './ui/button';
+import { Switch } from './ui/switch';
+import { Slider } from './ui/slider';
+import { Badge } from './ui/badge';
+import { Separator } from './ui/separator';
 
 // ---------------------------------------------------------------------------  // FILTER CONTROLS
 // Public types                                                                 // FILTER CONTROLS
@@ -28,7 +28,7 @@ export const DEFAULT_FILTERS: GraphFilters = {                                  
         'struct', 'interface', 'cloud_service', 'data_flow'                      // FILTER CONTROLS
     ]),                                                                           // FILTER CONTROLS
     showEdgeTypes: new Set([                                                      // FILTER CONTROLS
-        'calls', 'depends_on', 'implements',                                     // FILTER CONTROLS
+        'contains', 'calls', 'depends_on', 'implements',                         // FILTER CONTROLS
         'imports', 'produces_to', 'consumed_by', 'failed_at'                     // FILTER CONTROLS
     ]),                                                                           // FILTER CONTROLS
     minImportance: 0,                                                             // FILTER CONTROLS
@@ -232,7 +232,7 @@ export const GraphControls = ({                                                 
                             max={80}                                              // FILTER CONTROLS
                             step={10}                                             // FILTER CONTROLS
                             value={[filters.minImportance]}                       // FILTER CONTROLS
-                            onValueChange={(v) => update({                        // FILTER CONTROLS
+                            onValueChange={(v: number[]) => update({                        // FILTER CONTROLS
                                 minImportance: v[0]                               // FILTER CONTROLS
                             })}                                                   // FILTER CONTROLS
                             className="w-full"                                    // FILTER CONTROLS

@@ -8,11 +8,11 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import type { GraphNode, NodeDetail, RuntimeEvent } from '../../types/graph';
 import { api } from '../../api/client';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'; // SHADCN: replaced Section
-import { Badge } from '@/components/ui/badge';                                    // SHADCN: replaced TypeBadge/StatusBadge
-import { Button } from '@/components/ui/button';                                  // SHADCN: replaced <button>
-import { Separator } from '@/components/ui/separator';                            // SHADCN: replaced border-b dividers
-import { ScrollArea } from '@/components/ui/scroll-area';                         // SHADCN: replaced overflow scroll
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
+import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
+import { Separator } from '../ui/separator';
+import { ScrollArea } from '../ui/scroll-area';
 
 interface DetailPanelProps {
   node: GraphNode;
@@ -308,7 +308,7 @@ const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHi
               {m?.parameters && m.parameters.length > 0 && (
                 <KV
                   label="Params"
-                  value={m.parameters.map((p) => `${p.name} ${p.type}`).join(', ')}
+                  value={m.parameters.map((p: { name: string; type: string }) => `${p.name} ${p.type}`).join(', ')}
                 />
               )}
               {m?.return_types && m.return_types.length > 0 && (
@@ -333,7 +333,7 @@ const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHi
                 </tr>
               </thead>
               <tbody>
-                {m.fields.map((f, i) => (
+                {m.fields.map((f: { name: string; type: string }, i: number) => (
                   <tr key={i} className="text-gray-300">
                     <td>{f.name}</td>
                     <td className="text-gray-400">{f.type}</td>
@@ -344,7 +344,7 @@ const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHi
           )}
           {node.type === 'interface' && m?.methods && m.methods.length > 0 && (
             <ul className="mt-1 list-inside list-disc text-[11px] text-gray-300">
-              {m.methods.map((method, i) => (
+              {m.methods.map((method: string, i: number) => (
                 <li key={i}>{method}</li>
               ))}
             </ul>
@@ -418,7 +418,7 @@ const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHi
                                    gap-2 px-2 py-1 rounded text-xs              
                                    hover:bg-gray-800 group"                      // INTERCONNECTIONS
                       >                                                           {/* INTERCONNECTIONS */}
-                        <StatusDot status={n.runtime_status} />                   {/* INTERCONNECTIONS */}
+                        <StatusDot status={n.runtime_status ?? 'unknown'} />                   {/* INTERCONNECTIONS */}
                         <span className="text-gray-300 truncate                   
                                          group-hover:text-white">                {/* INTERCONNECTIONS */}
                           {n.name}                                                {/* INTERCONNECTIONS */}

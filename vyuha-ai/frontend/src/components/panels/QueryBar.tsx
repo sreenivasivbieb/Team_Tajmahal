@@ -1,131 +1,152 @@
 // ---------------------------------------------------------------------------
-// panels/QueryBar.tsx — Top query bar for natural-language questions
-// SHADCN: replaced hand-written input/button/chips with Input, Button, Badge
+// panels/QueryBar.tsx — Tool-selector bar + input for contextplus tools
+// Smart routing: Ask AI uses RAG, call-chain renders diagrams, others → text
 // ---------------------------------------------------------------------------
 
-import { useCallback, useEffect, useState, type FC, type FormEvent } from 'react';
-import { Loader2 } from 'lucide-react';                                          // SHADCN: icon
+import { useCallback, useState, type FC, type FormEvent } from 'react';
+import { Loader2, Sparkles } from 'lucide-react';
 import { api } from '../../api/client';
-import type { GraphNode } from '../../types/graph';
-import { Input } from '@/components/ui/input';                                    // SHADCN: replaced <input>
-import { Button } from '@/components/ui/button';                                  // SHADCN: replaced <button>
-import { Badge } from '@/components/ui/badge';                                    // SHADCN: replaced chips
+import { TOOLS, type ToolType, type CallChainResponse, type TextResult } from '../../types/graph';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+
+export type QueryResult =
+  | { kind: 'call_chain'; data: CallChainResponse }
+  | { kind: 'text'; tool: ToolType; data: TextResult }
+  | { kind: 'rag_answer'; data: { answer: string } };
 
 interface QueryBarProps {
-  onResult: (result: Awaited<ReturnType<typeof api.askQuestion>>, question: string) => void;
-  isRunning: boolean;
+  onResult: (result: QueryResult) => void;
+  isRunning?: boolean;
+  /** Absolute path of the active repo — scopes tools to this directory. */
+  repoPath?: string;
 }
 
-const QueryBar: FC<QueryBarProps> = ({ onResult, isRunning }) => {
-  const [question, setQuestion] = useState('');
+const QueryBar: FC<QueryBarProps> = ({ onResult, isRunning, repoPath }) => {
+  const [input, setInput] = useState('');
+  const [activeTool, setActiveTool] = useState<ToolType>('ask-ai');
   const [submitting, setSubmitting] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
 
-  // Load dynamic suggestions from graph data
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const services = await api.getServices();
-        const chips: string[] = [];
-        for (const svc of services.slice(0, 3)) {
-          chips.push(`How does ${svc.name} work?`);
-          if (svc.error_count > 0) {
-            chips.push(`Why is ${svc.name} failing?`);
-          }
-        }
-        // Try to find a function for the "What calls X?" suggestion
-        const fns = await api.searchNodes('%', 'function').catch(() => [] as GraphNode[]);
-        if (fns.length > 0) {
-          chips.push(`What calls ${fns[0].name}?`);
-        }
-        if (services.length > 0) {
-          chips.push(`What breaks if ${services[0].name} goes down?`);
-        }
-        if (!cancelled) setSuggestions(chips.slice(0, 4));
-      } catch {
-        if (!cancelled)
-          setSuggestions([
-            'How does the main service work?',
-            'What are the top failures?',
-          ]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const currentTool = TOOLS.find((t) => t.key === activeTool) ?? TOOLS[0];
 
   const handleSubmit = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
-      const q = question.trim();
-      if (!q || submitting) return;
+      const q = input.trim();
+      if (currentTool.requiresInput && !q) return;
+      if (submitting) return;
 
       setSubmitting(true);
       try {
-        const result = await api.askQuestion(q);
-        onResult(result, q);
-      } catch {
-        /* error handled by caller */
+        switch (activeTool) {
+          case 'ask-ai': {
+            const data = await api.ragQuery(q, repoPath);
+            onResult({ kind: 'rag_answer', data });
+            break;
+          }
+          case 'call-chain': {
+            const data = await api.callChain(q);
+            onResult({ kind: 'call_chain', data });
+            break;
+          }
+          case 'search': {
+            const data = await api.search(q);
+            onResult({ kind: 'text', tool: 'search', data });
+            break;
+          }
+          case 'context-tree': {
+            const data = await api.contextTree(q || repoPath || undefined);
+            onResult({ kind: 'text', tool: 'context-tree', data });
+            break;
+          }
+          case 'skeleton': {
+            const data = await api.skeleton(q);
+            onResult({ kind: 'text', tool: 'skeleton', data });
+            break;
+          }
+          case 'blast-radius': {
+            const data = await api.blastRadius(q);
+            onResult({ kind: 'text', tool: 'blast-radius', data });
+            break;
+          }
+          case 'identifier-search': {
+            const data = await api.identifierSearch(q);
+            onResult({ kind: 'text', tool: 'identifier-search', data });
+            break;
+          }
+          case 'static-analysis': {
+            const data = await api.staticAnalysis(q || repoPath || undefined);
+            onResult({ kind: 'text', tool: 'static-analysis', data });
+            break;
+          }
+        }
+      } catch (err) {
+        console.error('Tool error:', err);
       } finally {
         setSubmitting(false);
       }
     },
-    [question, submitting, onResult],
+    [input, activeTool, submitting, onResult, currentTool.requiresInput, repoPath],
   );
 
-  const handleChip = (text: string) => {
-    setQuestion(text);
-  };
-
-  const busy = submitting || isRunning;
+  const busy = submitting || !!isRunning;
 
   return (
     <div className="border-b border-border bg-gray-900/80 px-4 py-2 backdrop-blur">
+      {/* Tool selector chips */}
+      <div className="mb-1.5 flex flex-wrap gap-1.5">
+        {TOOLS.map((t) => (
+          <Badge
+            key={t.key}
+            variant={activeTool === t.key ? 'default' : 'outline'}
+            className={`cursor-pointer text-[11px] transition-colors ${
+              activeTool === t.key
+                ? t.key === 'ask-ai'
+                  ? 'bg-purple-600 text-white hover:bg-purple-500'
+                  : 'bg-blue-600 text-white hover:bg-blue-500'
+                : 'text-gray-400 hover:border-blue-500 hover:text-blue-300'
+            }`}
+            onClick={() => setActiveTool(t.key)}
+          >
+            {t.key === 'ask-ai' && <Sparkles className="mr-1 h-3 w-3" />}
+            {t.label}
+          </Badge>
+        ))}
+      </div>
+
+      {/* Input + submit */}
       <form onSubmit={handleSubmit} className="flex items-center gap-2">
-        {/* SHADCN: replaced <input> with <Input> */}
         <Input
           id="vyuha-query-input"
           type="text"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Ask anything about your codebase…"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder={currentTool.placeholder}
           className="flex-1 bg-gray-800 border-gray-700 text-gray-100 placeholder:text-gray-500 focus-visible:ring-blue-500"
           disabled={busy}
         />
-        {/* SHADCN: replaced <button> with <Button> */}
         <Button
           type="submit"
-          disabled={busy || !question.trim()}
+          disabled={busy || (currentTool.requiresInput && !input.trim())}
           size="sm"
+          className={activeTool === 'ask-ai' ? 'bg-purple-600 hover:bg-purple-500' : undefined}
         >
           {busy ? (
             <span className="flex items-center gap-1">
               <Loader2 className="h-3 w-3 animate-spin" />
-              Thinking…
+              {activeTool === 'ask-ai' ? 'Thinking…' : 'Running…'}
+            </span>
+          ) : activeTool === 'ask-ai' ? (
+            <span className="flex items-center gap-1">
+              <Sparkles className="h-3 w-3" />
+              Ask
             </span>
           ) : (
-            'Ask'
+            'Run'
           )}
         </Button>
       </form>
-
-      {/* SHADCN: replaced suggestion chips with Badge variant="outline" */}
-      {suggestions.length > 0 && (
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {suggestions.map((s, i) => (
-            <Badge
-              key={i}
-              variant="outline"
-              className="cursor-pointer text-[11px] text-gray-400 hover:border-blue-500 hover:text-blue-300"
-              onClick={() => handleChip(s)}
-            >
-              {s}
-            </Badge>
-          ))}
-        </div>
-      )}
     </div>
   );
 };

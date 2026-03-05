@@ -1,10 +1,11 @@
 // ---------------------------------------------------------------------------
-// hooks/useGraphLayout.ts — dagre layout computation
+// hooks/useGraphLayout.ts — dagre layout computation + tree layout for call chains
 // ---------------------------------------------------------------------------
 
 import { useCallback, useRef } from 'react';
 import type { Node as ReactFlowNode, Edge as ReactFlowEdge } from 'reactflow';
 import dagre from 'dagre';
+import type { CallChainMeta } from '../types/graph';
 
 // ---------------------------------------------------------------------------
 // Node size helpers — consistent sizes by type
@@ -123,6 +124,58 @@ export const applyDagreLayout = (
       position: {
         x: pos.x - (n.width  ?? getNodeWidth(nodeType))  / 2,
         y: pos.y - (n.height ?? getNodeHeight(nodeType)) / 2,
+      },
+    };
+  });
+
+  return { nodes: layoutedNodes, edges };
+};
+
+// ---------------------------------------------------------------------------
+// Tree layout for call-chain mode — positions nodes in a top-down tree
+// using depths from CallChainMeta
+// ---------------------------------------------------------------------------
+
+export const applyTreeLayout = (
+  nodes: ReactFlowNode[],
+  edges: ReactFlowEdge[],
+  meta: CallChainMeta,
+): { nodes: ReactFlowNode[]; edges: ReactFlowEdge[] } => {
+  if (nodes.length === 0) return { nodes, edges };
+
+  // Group nodes by depth level
+  const depthBuckets = new Map<number, ReactFlowNode[]>();
+  let maxDepth = 0;
+
+  // Callers (depth -1) vs callees (depth 0+)
+  for (const n of nodes) {
+    const depth = meta.depths[n.id] ?? -1; // callers default to -1
+    const existing = depthBuckets.get(depth) ?? [];
+    existing.push(n);
+    depthBuckets.set(depth, existing);
+    if (depth > maxDepth) maxDepth = depth;
+  }
+
+  const NODE_W = 240;
+  const NODE_H = 120;
+  const H_GAP = 50;
+  const V_GAP = 60;
+
+  const layoutedNodes = nodes.map((n) => {
+    const depth = meta.depths[n.id] ?? -1;
+    const bucket = depthBuckets.get(depth) ?? [n];
+    const idx = bucket.indexOf(n);
+    const count = bucket.length;
+
+    // Center each row horizontally
+    const totalWidth = count * NODE_W + (count - 1) * H_GAP;
+    const startX = -totalWidth / 2;
+
+    return {
+      ...n,
+      position: {
+        x: startX + idx * (NODE_W + H_GAP),
+        y: (depth + 1) * (NODE_H + V_GAP), // +1 so callers at depth -1 appear at y=0
       },
     };
   });

@@ -1,3 +1,6 @@
+// VYUHA AI — Thin HTTP layer backed by contextplus MCP server
+// All code intelligence (parsing, call chains, search, RAG) is delegated to contextplus
+
 package main
 
 import (
@@ -9,19 +12,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/vyuha/vyuha-ai/internal/ai"
 	"github.com/vyuha/vyuha-ai/internal/api"
-	"github.com/vyuha/vyuha-ai/internal/graph"
-	"github.com/vyuha/vyuha-ai/internal/query"
-	"github.com/vyuha/vyuha-ai/internal/storage"
+	"github.com/vyuha/vyuha-ai/internal/bridge"
 )
 
-// initLogger configures the global slog default with JSON output.
 func initLogger(level string) {
 	var lvl slog.Level
 	switch strings.ToLower(level) {
@@ -34,16 +34,10 @@ func initLogger(level string) {
 	default:
 		lvl = slog.LevelInfo
 	}
-	opts := &slog.HandlerOptions{
-		Level:     lvl,
-		AddSource: lvl == slog.LevelDebug,
-	}
-	h := slog.NewJSONHandler(os.Stdout, opts)
-	slog.SetDefault(slog.New(h))
+	opts := &slog.HandlerOptions{Level: lvl}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, opts)))
 }
 
-// envOrDefault resolves a configuration value with the priority:
-//   flag (if explicitly set, i.e. differs from defaultVal) > env var > default.
 func envOrDefault(envKey, flagVal, defaultVal string) string {
 	if flagVal != defaultVal {
 		return flagVal
@@ -56,121 +50,74 @@ func envOrDefault(envKey, flagVal, defaultVal string) string {
 
 func main() {
 	// ---- Flags -----------------------------------------------------------
-	dbPathFlag := flag.String("db-path", "./vyuha.db", "Path to SQLite database file")
 	portFlag := flag.Int("port", 8080, "HTTP server port")
 	logLevel := flag.String("log-level", "info", "Log level (debug|info|warn|error)")
-	aiProviderFlag := flag.String("ai-provider", "", "AI provider: bedrock or ollama (empty = disabled)")
-	aiRegionFlag := flag.String("ai-region", "us-east-1", "AWS region for Bedrock provider")
-	aiModelFlag := flag.String("ai-model", "", "LLM model ID (provider-specific)")
-	aiEmbedModel := flag.String("ai-embed-model", "", "Embedding model ID (provider-specific)")
-	ollamaURLFlag := flag.String("ollama-url", "http://localhost:11434", "Ollama API URL")
+	contextplusPath := flag.String("contextplus", "", "Path to contextplus index.js (default: auto-detect)")
+	rootDirFlag := flag.String("root", ".", "Codebase root directory for contextplus")
 	flag.Parse()
 
-	// Resolve config: flag > env var > default.
-	dbPath := envOrDefault("VYUHA_DB_PATH", *dbPathFlag, "./vyuha.db")
+	// Resolve config via flag > env > default
 	portStr := envOrDefault("VYUHA_PORT", strconv.Itoa(*portFlag), "8080")
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		log.Fatalf("invalid port value %q: %v", portStr, err)
+		log.Fatalf("invalid port %q: %v", portStr, err)
 	}
-	aiProvider := envOrDefault("VYUHA_AI_PROVIDER", *aiProviderFlag, "")
-	aiRegion := envOrDefault("VYUHA_AI_REGION", *aiRegionFlag, "us-east-1")
-	aiModel := envOrDefault("VYUHA_AI_MODEL", *aiModelFlag, "")
-	ollamaURL := envOrDefault("VYUHA_OLLAMA_URL", *ollamaURLFlag, "http://localhost:11434")
+	rootDir := envOrDefault("VYUHA_ROOT_DIR", *rootDirFlag, ".")
+	absRoot, _ := filepath.Abs(rootDir)
 
 	initLogger(*logLevel)
 
-	// ---- Storage ---------------------------------------------------------
-	store, err := storage.New(dbPath)
-	if err != nil {
-		log.Fatalf("failed to initialise storage: %v", err)
+	// ---- Resolve contextplus path ----------------------------------------
+	cpPath := envOrDefault("CONTEXTPLUS_PATH", *contextplusPath, "")
+	if cpPath == "" {
+		// Auto-detect: look for contextplus relative to this binary
+		candidates := []string{
+			filepath.Join("..", "contextplus", "build", "index.js"),
+			filepath.Join("contextplus", "build", "index.js"),
+		}
+		if exe, err := os.Executable(); err == nil {
+			candidates = append(candidates,
+				filepath.Join(filepath.Dir(exe), "..", "contextplus", "build", "index.js"),
+			)
+		}
+		for _, c := range candidates {
+			abs, _ := filepath.Abs(c)
+			if _, err := os.Stat(abs); err == nil {
+				cpPath = abs
+				break
+			}
+		}
+	}
+	if cpPath == "" {
+		log.Fatal("contextplus not found — set --contextplus or CONTEXTPLUS_PATH")
 	}
 
-	// ---- Graph Index -----------------------------------------------------
-	ctx := context.Background()
-	index := graph.NewGraphIndex()
-	if err := index.LoadFromStorage(ctx, store); err != nil {
-		log.Fatalf("failed to load graph index: %v", err)
+	slog.Info("resolved contextplus", "path", cpPath)
+
+	// ---- Spawn contextplus MCP bridge ------------------------------------
+	mcp, err := bridge.NewMCPClient(cpPath, absRoot)
+	if err != nil {
+		log.Fatalf("failed to start contextplus bridge: %v", err)
 	}
-	nodeCount := index.NodeCount()
-	edgeCount := index.EdgeCount()
 
 	// ---- SSE Broadcaster -------------------------------------------------
 	sse := api.NewSSEBroadcaster()
 
-	// ---- AI Provider (optional) ------------------------------------------
-	var provider ai.Provider
-	var embedSvc *ai.EmbeddingService
-	var jobQueue *ai.JobQueue
-
-	if aiProvider != "" {
-		cfg := ai.ProviderConfig{
-			Kind:           ai.ProviderKind(aiProvider),
-			Region:         aiRegion,
-			Model:          aiModel,
-			EmbeddingModel: *aiEmbedModel,
-			OllamaURL:      ollamaURL,
-		}
-		provider, err = ai.NewProvider(ctx, cfg)
-		if err != nil {
-			slog.Warn("AI provider init failed — AI features disabled", "error", err)
-		} else {
-			slog.Info("AI provider ready", "provider", provider.Name())
-
-			// Embedding service (best-effort — non-fatal on failure).
-			embedSvc, err = ai.NewEmbeddingService(ctx, provider, store, index)
-			if err != nil {
-				slog.Warn("embedding service init failed", "error", err)
-				embedSvc = nil
-			}
-
-			// Job queue — created before Server so it can be injected via constructor.
-			broadcaster := api.NewAIBroadcaster(sse)
-			jobQueue = ai.NewJobQueue(provider, embedSvc, broadcaster, 2)
-		}
-	}
-
 	// ---- HTTP Server -----------------------------------------------------
-	srv := api.NewServer(store, index, sse, jobQueue)
-
-	// ---- Query Layer -----------------------------------------------------
-	{
-		var broadcaster ai.Broadcaster
-		if provider != nil {
-			broadcaster = api.NewAIBroadcaster(sse)
-		}
-		ql := query.NewQueryLayer(index, store, provider, embedSvc, broadcaster)
-		srv.SetQueryLayer(ql)
-	}
-
-	// ---- Startup banner --------------------------------------------------
-	aiStatus := "disabled"
-	if provider != nil {
-		aiStatus = provider.Name()
-	}
-	banner := fmt.Sprintf(`
-═══════════════════════════════
- VYUHA AI — Code Intelligence
- DB:   %s
- Port: %d
- Nodes loaded: %d
- Edges loaded: %d
- AI:   %s
-═══════════════════════════════`, dbPath, port, nodeCount, edgeCount, aiStatus)
-	fmt.Println(banner)
-
-	slog.Info("vyuha starting",
-		"db_path", dbPath,
-		"port", port,
-		"nodes", nodeCount,
-		"edges", edgeCount,
-		"ai_provider", aiStatus,
-	)
-
+	srv := api.NewServer(mcp, sse)
 	srv.RegisterRoutes()
 
-	addr := fmt.Sprintf(":%d", port)
+	// ---- Startup banner --------------------------------------------------
+	banner := fmt.Sprintf(`
+═══════════════════════════════════════════
+ VYUHA AI — Code Intelligence (bridge mode)
+ Root:        %s
+ Port:        %d
+ Contextplus: %s
+═══════════════════════════════════════════`, absRoot, port, cpPath)
+	fmt.Println(banner)
 
+	addr := fmt.Sprintf(":%d", port)
 	go func() {
 		slog.Info("HTTP server listening", "addr", addr)
 		if err := srv.ListenAndServe(addr); err != nil && err != http.ErrServerClosed {
@@ -188,18 +135,7 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("HTTP server shutdown error", "error", err)
-	}
-
-	if jobQueue != nil {
-		jobQueue.Close()
-	}
-	if provider != nil {
-		provider.Close()
-	}
-
-	if err := store.Close(); err != nil {
-		slog.Error("storage close error", "error", err)
+		slog.Error("shutdown error", "error", err)
 	}
 
 	slog.Info("VYUHA shutdown complete")

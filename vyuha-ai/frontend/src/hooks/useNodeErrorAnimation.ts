@@ -1,48 +1,27 @@
 // ---------------------------------------------------------------------------
-// hooks/useNodeErrorAnimation.ts — Listen for vyuha:node_error events and
-// return a CSS animation class for the given node, auto-cleared after 2s.
+// hooks/useNodeErrorAnimation.ts — Returns a CSS class that pulses when a
+// node transitions into an error state. Uses a simple time-window check.
 // ---------------------------------------------------------------------------
 
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Returns `'animate-error-pulse'`, `'animate-degraded-pulse'`, or `''`.
- * The class is applied for 2 seconds after the matching custom event fires.
+ * Returns a class name string that applies a brief "shake" / "pulse-red"
+ * animation when the node is first detected in an error state.
+ * After ~2 seconds the animation class is removed so the node stays still.
  */
 export function useNodeErrorAnimation(nodeId: string): string {
-  const [animClass, setAnimClass] = useState('');
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [animating, setAnimating] = useState(false);
+  const prevId = useRef(nodeId);
 
   useEffect(() => {
-    function handleNodeError(e: Event) {
-      const detail = (e as CustomEvent<{ nodeId: string; status: string }>).detail;
-      if (detail.nodeId !== nodeId) return;
-
-      // Clear any existing timer so a rapid re-fire restarts the animation
-      if (timerRef.current) clearTimeout(timerRef.current);
-
-      const cls =
-        detail.status === 'error'
-          ? 'animate-error-pulse'
-          : detail.status === 'degraded'
-            ? 'animate-degraded-pulse'
-            : '';
-
-      setAnimClass(cls);
-
-      // Remove class after 2 seconds
-      timerRef.current = setTimeout(() => {
-        setAnimClass('');
-        timerRef.current = null;
-      }, 2000);
+    if (nodeId !== prevId.current) {
+      prevId.current = nodeId;
+      setAnimating(true);
+      const timer = setTimeout(() => setAnimating(false), 2000);
+      return () => clearTimeout(timer);
     }
-
-    window.addEventListener('vyuha:node_error', handleNodeError);
-    return () => {
-      window.removeEventListener('vyuha:node_error', handleNodeError);
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
   }, [nodeId]);
 
-  return animClass;
+  return animating ? 'animate-pulse' : '';
 }

@@ -1,250 +1,200 @@
 // ---------------------------------------------------------------------------
-// App.tsx — Main application shell (refactored with context providers)
+// App.tsx — Eraser.io-style two-panel layout
+//   Left sidebar : repos + nav
+//   Main area    : dashboard (diagrams list) OR diagram editor (QueryBar + canvas)
 // ---------------------------------------------------------------------------
 
-import { useCallback, useEffect, useMemo, type FC } from 'react';
-import GraphCanvas from './components/GraphCanvas';
+import { useCallback, useState, type FC } from 'react';
+import { TooltipProvider } from '@/components/ui/tooltip';
+
+import Sidebar from './components/Sidebar';
+import Dashboard from './components/Dashboard';
+import AddRepoDialog, { type AddRepoResult } from './components/AddRepoDialog';
+import EraserEditor from './components/eraser/EraserEditor';
 import StatusBar from './components/StatusBar';
-import QueryBar from './components/panels/QueryBar';
-import AgentPanel from './components/panels/AgentPanel';
-import LogIngestion from './components/panels/LogIngestion';
-import ScanSetup from './components/ScanSetup';
-import Breadcrumbs from './components/Breadcrumbs';
-import ScanDiffBanner from './components/ScanDiffBanner';
+
+import { useWorkspace } from './hooks/useWorkspace';
 import { useGraph } from './hooks/useGraph';
 import { useSSE } from './hooks/useSSE';
-import { useAgent } from './hooks/useAgent';
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import {
-  ScanProvider,
-  useScan,
-  PanelProvider,
-  usePanels,
-  NavigationProvider,
-  useNavigation,
-} from './context';
-import { applyDagreLayout } from './hooks/useGraph';
-import { nodeTypeToRF } from './utils/nodeMapping';
-import type { QueryDecision } from './types/graph';
-import type { UseGraphReturn } from './hooks/useGraph';
-import type { UseSSEReturn } from './hooks/useSSE';
+import { api } from './api/client';
 
 // ---------------------------------------------------------------------------
-// AppInnerWrapper — consumes all contexts, holds main logic
+// View mode
 // ---------------------------------------------------------------------------
 
-interface AppInnerWrapperProps {
-  graph: UseGraphReturn;
-  sse: UseSSEReturn;
-}
-
-const AppInnerWrapper: FC<AppInnerWrapperProps> = ({ graph, sse }) => {
-  const agent = useAgent();
-  const scan = useScan();
-  const panels = usePanels();
-  const nav = useNavigation();
-
-  // Load services on mount
-  useEffect(() => {
-    graph.loadServices();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Handle query result from QueryBar
-  const handleQueryResult = useCallback(
-    (result: QueryDecision, question: string) => {
-      switch (result.mode) {
-        case 'subgraph': {
-          if (result.subgraph) {
-            const { nodes: subNodes, edges: subEdges } = result.subgraph;
-            const rfNodes = subNodes.map((n) => ({
-              id: n.id,
-              type: nodeTypeToRF(n.type),
-              position: { x: 0, y: 0 },
-              data: { ...n },
-            }));
-            const rfEdges = subEdges.map((e) => ({
-              id: e.id || `${e.source_id}-${e.type}-${e.target_id}`,
-              source: e.source_id,
-              target: e.target_id,
-              label: e.type,
-              animated: e.type === 'calls' || e.type === 'runtime_calls',
-            }));
-            const laid = applyDagreLayout(rfNodes, rfEdges, { rankByType: true });
-            graph.setNodesAndEdges(laid.nodes, laid.edges);
-          } else if (result.target_id && result.subgraph_type) {
-            graph.loadSubgraph(result.target_id, result.subgraph_type);
-          }
-          break;
-        }
-        case 'agent': {
-          panels.openAgentPanel();
-          if (!result.agent_run && !result.answer) {
-            agent.ask(question);
-          }
-          break;
-        }
-        case 'direct_graph': {
-          if (result.graph_data?.nodes) {
-            const rfNodes = result.graph_data.nodes.map((n) => ({
-              id: n.id,
-              type: nodeTypeToRF(n.type),
-              position: { x: 0, y: 0 },
-              data: { ...n },
-            }));
-            const rfEdges = (result.graph_data.edges ?? []).map((e) => ({
-              id: e.id || `${e.source_id}-${e.type}-${e.target_id}`,
-              source: e.source_id,
-              target: e.target_id,
-              label: e.type,
-              animated: false,
-            }));
-            const laid = applyDagreLayout(rfNodes, rfEdges, { rankByType: true });
-            graph.setNodesAndEdges(laid.nodes, laid.edges);
-          }
-          break;
-        }
-        case 'sql':
-        default:
-          if (result.answer) {
-            panels.openAgentPanel();
-          }
-          break;
-      }
-    },
-    [graph, agent, panels],
-  );
-
-  // Agent panel node click → navigate canvas
-  const handleAgentNodeClick = useCallback(
-    (nodeId: string) => {
-      panels.closeAgentPanel();
-      nav.navigateTo(nodeId);
-    },
-    [panels, nav],
-  );
-
-  // Keyboard shortcuts
-  const shortcutHandlers = useMemo(
-    () => ({
-      onFocusQueryBar: () => {
-        const input = document.getElementById('vyuha-query-input');
-        if (input) {
-          (input as HTMLInputElement).focus();
-          (input as HTMLInputElement).select();
-        }
-      },
-      onClosePanel: () => panels.closeTopPanel(),
-      onRescan: () => scan.handleRescan(),
-      onFitView: () => window.dispatchEvent(new CustomEvent('vyuha-fit-view')),
-    }),
-    [panels, scan],
-  );
-
-  useKeyboardShortcuts(shortcutHandlers);
-
-  return (
-    <div className="flex h-screen w-screen flex-col bg-gray-950 text-gray-100">
-      {/* Scan error banner */}
-      {scan.scanError && (
-        <div className="flex items-center gap-3 bg-red-900/90 px-4 py-2 text-sm text-red-200">
-          <svg className="h-4 w-4 shrink-0 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span className="flex-1">Scan failed: {scan.scanError}</span>
-          <button
-            onClick={scan.handleRescan}
-            className="shrink-0 rounded bg-red-800 px-2.5 py-1 text-xs font-medium text-red-100 transition-colors hover:bg-red-700"
-          >
-            Retry
-          </button>
-          <button
-            onClick={scan.dismissScanError}
-            className="shrink-0 text-red-400 transition-colors hover:text-red-200"
-            aria-label="Dismiss"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Scan diff banner */}
-      {scan.scanDiff && (
-        <ScanDiffBanner diff={scan.scanDiff} onDismiss={scan.dismissScanDiff} />
-      )}
-
-      {/* Query bar */}
-      <QueryBar onResult={handleQueryResult} isRunning={agent.isRunning} />
-
-      {/* Breadcrumbs */}
-      <Breadcrumbs currentNode={nav.breadcrumbNode} onNavigate={nav.navigateTo} />
-
-      {/* Main area */}
-      <div className="relative flex-1 overflow-hidden">
-        <GraphCanvas
-          graph={graph}
-          sse={sse}
-          navigateToNodeId={nav.navigateToNodeId}
-          onNavigationComplete={nav.clearNavigation}
-          onNodeSelect={nav.selectNode}
-        />
-
-        {/* Agent panel */}
-        {panels.showAgent && (
-          <AgentPanel
-            steps={sse.agentSteps}
-            agentRun={agent.agentRun}
-            isRunning={agent.isRunning}
-            onClose={panels.closeAgentPanel}
-            onNodeClick={handleAgentNodeClick}
-          />
-        )}
-      </div>
-
-      {/* Log ingestion modal */}
-      {panels.showIngestion && <LogIngestion onClose={panels.closeIngestionPanel} />}
-
-      {/* Setup modal */}
-      {scan.needsSetup && (
-        <ScanSetup
-          onScan={scan.doScan}
-          onLoadDemo={scan.handleLoadDemo}
-          isScanning={scan.isScanning}
-          error={scan.scanError}
-        />
-      )}
-
-      {/* Status bar */}
-      <StatusBar
-        nodeCount={graph.nodes.length}
-        edgeCount={graph.edges.length}
-        isConnected={sse.isConnected}
-        onRescan={scan.handleRescan}
-        onOpenIngestion={panels.openIngestionPanel}
-        rfNodes={graph.nodes}
-      />
-    </div>
-  );
-};
+type ViewMode = 'dashboard' | 'editor';
 
 // ---------------------------------------------------------------------------
-// AppWithProviders — sets up context providers, default export
+// Root App — combines sidebar + main panel
 // ---------------------------------------------------------------------------
 
-const AppWithProviders: FC = () => {
+const App: FC = () => {
+  const workspace = useWorkspace();
   const graph = useGraph();
   const sse = useSSE();
 
+  const [view, setView] = useState<ViewMode>('dashboard');
+  const [addRepoOpen, setAddRepoOpen] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanSuccess, setScanSuccess] = useState<string | null>(null);
+
+  // Auto-dismiss success notification after 5 seconds
+  // (using a ref so the effect doesn't need scanSuccess in deps)
+  const successTimerRef = useState<ReturnType<typeof setTimeout> | null>(null);
+  if (scanSuccess && !successTimerRef[0]) {
+    successTimerRef[0] = setTimeout(() => {
+      setScanSuccess(null);
+      successTimerRef[0] = null;
+    }, 5000);
+  }
+  if (!scanSuccess && successTimerRef[0]) {
+    clearTimeout(successTimerRef[0]);
+    successTimerRef[0] = null;
+  }
+
+  // ---- Add repo handler (GitHub clone or local path) -----------------------
+  const handleAddRepo = useCallback(
+    async (result: AddRepoResult) => {
+      setIsScanning(true);
+      setScanError(null);
+      try {
+        if (result.source === 'github') {
+          // Clone from GitHub → backend handles git clone + scan
+          const data = await api.cloneRepo(result.path);
+          const entry = workspace.addRepo(data.name || result.name, data.local_path);
+          workspace.markRepoReady(entry.id, data.symbol_count);
+          setScanSuccess(`Repository "${data.name || result.name}" cloned & scanned — ${data.symbol_count ?? 0} symbols indexed`);
+        } else {
+          // Local path → scan only
+          const entry = workspace.addRepo(result.name, result.path);
+          const data = await api.scanRepo(result.path);
+          workspace.markRepoReady(entry.id, data.symbol_count);
+          setScanSuccess(`Repository "${result.name}" scanned — ${data.symbol_count ?? 0} symbols indexed`);
+        }
+        // Auto-navigate to Eraser-style editor after successful clone+scan
+        graph.clearAll();
+        setView('editor');
+        setIsScanning(false);
+        setAddRepoOpen(false);
+      } catch (err) {
+        console.error('Add repo error:', err);
+        const msg = err instanceof Error ? err.message : String(err);
+        setScanError(msg || 'An unknown error occurred. Is the Vyuha server running?');
+        setIsScanning(false);
+        // Do NOT close the dialog — keep it open so user sees the error
+      }
+    },
+    [workspace, graph],
+  );
+
+  // ---- Open diagram handler (go to editor view) --------------------------
+  const handleOpenDiagram = useCallback(
+    (diagramId: string) => {
+      workspace.setActiveDiagram(diagramId);
+      setView('editor');
+    },
+    [workspace],
+  );
+
+  // ---- New blank diagram → editor view -----------------------------------
+  const handleNewBlank = useCallback(() => {
+    graph.clearAll();
+    setView('editor');
+  }, [graph]);
+
+  // ---- AI diagram → editor with pre-selected AI tool --------------------
+  const handleAIDiagram = useCallback(() => {
+    graph.clearAll();
+    setView('editor');
+  }, [graph]);
+
+  // ---- Save diagram from editor ----------------------------------------
+  const handleSaveDiagram = useCallback(
+    (tool: string, query: string) => {
+      if (!workspace.activeRepo) return;
+      workspace.saveDiagram(workspace.activeRepo.id, query || 'Untitled Diagram', tool, query);
+    },
+    [workspace],
+  );
+
+  // ---- Back to dashboard when clicking a repo in sidebar ----------------
+  const handleSelectRepo = useCallback(
+    (id: string) => {
+      workspace.setActiveRepo(id);
+      setView('dashboard');
+    },
+    [workspace],
+  );
+
   return (
-    <NavigationProvider>
-      <ScanProvider graph={graph}>
-        <PanelProvider sse={sse}>
-          <AppInnerWrapper graph={graph} sse={sse} />
-        </PanelProvider>
-      </ScanProvider>
-    </NavigationProvider>
+    <TooltipProvider delayDuration={200}>
+        <div className="flex h-screen w-screen bg-[#0b0e14] text-gray-100">
+          {/* ── Sidebar ────────────────────────────────────── */}
+          <Sidebar
+            repos={workspace.repos}
+            activeRepoId={workspace.activeRepo?.id ?? null}
+            onSelectRepo={handleSelectRepo}
+            onRemoveRepo={workspace.removeRepo}
+            onAddRepo={() => setAddRepoOpen(true)}
+          />
+
+          {/* ── Main area ──────────────────────────────────── */}
+          <div className="flex flex-1 flex-col overflow-hidden">
+            {view === 'dashboard' ? (
+              <>
+                <Dashboard
+                  activeRepo={workspace.activeRepo}
+                  diagrams={workspace.diagrams}
+                  onNewBlankDiagram={handleNewBlank}
+                  onAIDiagram={handleAIDiagram}
+                  onOpenDiagram={handleOpenDiagram}
+                  onRemoveDiagram={workspace.removeDiagram}
+                />
+                <StatusBar
+                  nodeCount={graph.nodes.length}
+                  edgeCount={graph.edges.length}
+                  isConnected={sse.isConnected}
+                  toolProgress={sse.toolProgress}
+                />
+              </>
+            ) : (
+              <EraserEditor
+                repoName={workspace.activeRepo?.name ?? 'Untitled'}
+                repoPath={workspace.activeRepo?.path ?? ''}
+                graph={graph}
+                sse={sse}
+                onBack={() => setView('dashboard')}
+              />
+            )}
+          </div>
+
+          {/* ── Success notification ──────────────────────── */}
+          {scanSuccess && (
+            <div className="fixed bottom-4 right-4 z-[100] flex items-center gap-3 rounded-lg border border-emerald-700 bg-emerald-900/90 px-4 py-3 text-sm text-emerald-200 shadow-2xl backdrop-blur animate-in slide-in-from-bottom-4">
+              <span className="text-emerald-400">✓</span>
+              <span>{scanSuccess}</span>
+              <button
+                onClick={() => setScanSuccess(null)}
+                className="ml-2 rounded px-1.5 py-0.5 text-emerald-400 hover:bg-emerald-800"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* ── Add repo dialog ────────────────────────────── */}
+          <AddRepoDialog
+            open={addRepoOpen}
+            onClose={() => { setAddRepoOpen(false); setScanError(null); }}
+            onSubmit={handleAddRepo}
+            isScanning={isScanning}
+            error={scanError}
+            onClearError={() => setScanError(null)}
+          />
+        </div>
+    </TooltipProvider>
   );
 };
 
-export default AppWithProviders;
-
+export default App;
