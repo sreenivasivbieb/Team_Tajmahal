@@ -4,14 +4,20 @@
 //   Main area    : dashboard (diagrams list) OR diagram editor (QueryBar + canvas)
 // ---------------------------------------------------------------------------
 
-import { useCallback, useState, type FC } from 'react';
+import { useCallback, useRef, useState, type FC } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import type { Node as RFNode, Edge as RFEdge } from 'reactflow';
 
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import AddRepoDialog, { type AddRepoResult } from './components/AddRepoDialog';
+import RepoSelectDialog from './components/RepoSelectDialog';
+import ChatCodeView from './components/ChatCodeView';
 import EraserEditor from './components/eraser/EraserEditor';
 import StatusBar from './components/StatusBar';
+import Beams from './components/Beams';
+import LandingPage from './components/LandingPage';
+import AIDiagramView from './components/AIDiagramView';
 
 import { useWorkspace } from './hooks/useWorkspace';
 import { useGraph } from './hooks/useGraph';
@@ -22,7 +28,7 @@ import { api } from './api/client';
 // View mode
 // ---------------------------------------------------------------------------
 
-type ViewMode = 'dashboard' | 'editor';
+type ViewMode = 'dashboard' | 'editor' | 'chatcode' | 'ai-diagram';
 
 // ---------------------------------------------------------------------------
 // Root App — combines sidebar + main panel
@@ -33,8 +39,28 @@ const App: FC = () => {
   const graph = useGraph();
   const sse = useSSE();
 
+  const [showLanding, setShowLanding] = useState(true);
+  const [appReady, setAppReady] = useState(false);
   const [view, setView] = useState<ViewMode>('dashboard');
+  const [viewAnim, setViewAnim] = useState<'in' | 'out' | 'idle'>('idle');
+  const pendingView = useRef<ViewMode | null>(null);
+
+  const transitionTo = useCallback((next: ViewMode) => {
+    if (next === view) return;
+    setViewAnim('out');
+    pendingView.current = next;
+    setTimeout(() => {
+      setView(next);
+      setViewAnim('in');
+      setTimeout(() => setViewAnim('idle'), 350);
+    }, 250);
+  }, [view]);
   const [addRepoOpen, setAddRepoOpen] = useState(false);
+  const [repoSelectOpen, setRepoSelectOpen] = useState(false);
+  const [addRepoFromChat, setAddRepoFromChat] = useState(false);
+  const [aiDiagramRepoSelectOpen, setAiDiagramRepoSelectOpen] = useState(false);
+  const [aiDiagramRepoPath, setAiDiagramRepoPath] = useState('');
+  const [aiDiagramRepoName, setAiDiagramRepoName] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanSuccess, setScanSuccess] = useState<string | null>(null);
@@ -74,46 +100,108 @@ const App: FC = () => {
         }
         // Auto-navigate to Eraser-style editor after successful clone+scan
         graph.clearAll();
-        setView('editor');
+        if (addRepoFromChat) {
+          transitionTo('chatcode');
+          setAddRepoFromChat(false);
+        } else {
+          transitionTo('editor');
+        }
         setIsScanning(false);
         setAddRepoOpen(false);
       } catch (err) {
         console.error('Add repo error:', err);
         const msg = err instanceof Error ? err.message : String(err);
-        setScanError(msg || 'An unknown error occurred. Is the Vyuha server running?');
+        setScanError(msg || 'An unknown error occurred. Is the Codrix server running?');
         setIsScanning(false);
         // Do NOT close the dialog — keep it open so user sees the error
       }
     },
-    [workspace, graph],
+    [workspace, graph, transitionTo],
   );
 
   // ---- Open diagram handler (go to editor view) --------------------------
   const handleOpenDiagram = useCallback(
     (diagramId: string) => {
+      const diagram = workspace.diagrams.find((d) => d.id === diagramId);
+      if (diagram?.nodes && diagram?.edges) {
+        // Restore the saved graph state
+        const nodes = diagram.nodes as RFNode[];
+        const edges = diagram.edges as RFEdge[];
+        graph.restoreSnapshot(nodes, edges);
+      } else {
+        graph.clearAll();
+      }
       workspace.setActiveDiagram(diagramId);
-      setView('editor');
+      workspace.touchDiagram(diagramId);
+      transitionTo('editor');
     },
-    [workspace],
+    [workspace, graph, transitionTo],
   );
 
   // ---- New blank diagram → editor view -----------------------------------
   const handleNewBlank = useCallback(() => {
     graph.clearAll();
-    setView('editor');
-  }, [graph]);
+    transitionTo('editor');
+  }, [graph, transitionTo]);
 
-  // ---- AI diagram → editor with pre-selected AI tool --------------------
+  // ---- AI diagram → open repo selector popup ----------------------------
   const handleAIDiagram = useCallback(() => {
-    graph.clearAll();
-    setView('editor');
-  }, [graph]);
+    setAiDiagramRepoSelectOpen(true);
+  }, []);
 
-  // ---- Save diagram from editor ----------------------------------------
-  const handleSaveDiagram = useCallback(
-    (tool: string, query: string) => {
+  // ---- AI diagram repo selected → go to ai-diagram view ----------------
+  const handleAiDiagramRepoSelected = useCallback(
+    (repo: import('./types/workspace').RepoEntry) => {
+      setAiDiagramRepoPath(repo.path);
+      setAiDiagramRepoName(repo.name);
+      setAiDiagramRepoSelectOpen(false);
+      transitionTo('ai-diagram');
+    },
+    [transitionTo],
+  );
+
+  // ---- AI diagram without repo → go to ai-diagram view -----------------
+  const handleAiDiagramSkipRepo = useCallback(() => {
+    setAiDiagramRepoPath('');
+    setAiDiagramRepoName('');
+    setAiDiagramRepoSelectOpen(false);
+    transitionTo('ai-diagram');
+  }, [transitionTo]);
+
+  // ---- ChatCode → open repo selector popup ------------------------------
+  const handleChatCode = useCallback(() => {
+    setRepoSelectOpen(true);
+  }, []);
+
+  // ---- Repo selected from ChatCode popup → go to chat view --------------
+  const handleChatRepoSelected = useCallback(
+    (repo: import('./types/workspace').RepoEntry) => {
+      workspace.setActiveRepo(repo.id);
+      setRepoSelectOpen(false);
+      transitionTo('chatcode');
+    },
+    [workspace, transitionTo],
+  );
+
+  // ---- Add repo from ChatCode popup → open AddRepo dialog ---------------
+  const handleAddRepoFromChat = useCallback(() => {
+    setRepoSelectOpen(false);
+    setAddRepoFromChat(true);
+    setAddRepoOpen(true);
+  }, []);
+
+  // ---- Save diagram from export -----------------------------------------
+  const handleExportSave = useCallback(
+    (tool: string, query: string, nodes: unknown[], edges: unknown[]) => {
       if (!workspace.activeRepo) return;
-      workspace.saveDiagram(workspace.activeRepo.id, query || 'Untitled Diagram', tool, query);
+      workspace.saveDiagram(
+        workspace.activeRepo.id,
+        workspace.activeRepo.name,
+        tool,
+        query,
+        nodes,
+        edges,
+      );
     },
     [workspace],
   );
@@ -122,14 +210,26 @@ const App: FC = () => {
   const handleSelectRepo = useCallback(
     (id: string) => {
       workspace.setActiveRepo(id);
-      setView('dashboard');
+      transitionTo('dashboard');
     },
-    [workspace],
+    [workspace, transitionTo],
   );
+
+  const handleLandingExit = useCallback(() => {
+    setShowLanding(false);
+    setAppReady(true);
+  }, []);
 
   return (
     <TooltipProvider delayDuration={200}>
-        <div className="flex h-screen w-screen bg-[#0b0e14] text-gray-100">
+        {showLanding && <LandingPage onEnter={handleLandingExit} />}
+        <div className={`relative flex h-screen w-screen text-gray-100 overflow-hidden ${appReady ? 'animate-appFadeIn' : showLanding ? 'opacity-0' : ''}`}>
+          {/* ── Animated beams background ──────────────── */}
+          <div className="pointer-events-none absolute inset-0 z-0">
+            <Beams beamWidth={3} beamHeight={30} beamNumber={20} speed={2} noiseIntensity={1.75} scale={0.2} rotation={30} />
+            {/* Dim overlay to keep text readable */}
+            <div className="absolute inset-0 bg-black/50" />
+          </div>
           {/* ── Sidebar ────────────────────────────────────── */}
           <Sidebar
             repos={workspace.repos}
@@ -140,16 +240,21 @@ const App: FC = () => {
           />
 
           {/* ── Main area ──────────────────────────────────── */}
-          <div className="flex flex-1 flex-col overflow-hidden">
+          <div className={`relative z-10 flex flex-1 flex-col overflow-hidden transition-opacity duration-250 ${
+              viewAnim === 'out' ? 'opacity-0' : viewAnim === 'in' ? 'animate-fade-in' : ''
+            }`}>
             {view === 'dashboard' ? (
               <>
                 <Dashboard
                   activeRepo={workspace.activeRepo}
+                  repos={workspace.repos}
                   diagrams={workspace.diagrams}
                   onNewBlankDiagram={handleNewBlank}
                   onAIDiagram={handleAIDiagram}
+                  onChatCode={handleChatCode}
                   onOpenDiagram={handleOpenDiagram}
                   onRemoveDiagram={workspace.removeDiagram}
+                  onSelectRepo={handleSelectRepo}
                 />
                 <StatusBar
                   nodeCount={graph.nodes.length}
@@ -158,13 +263,32 @@ const App: FC = () => {
                   toolProgress={sse.toolProgress}
                 />
               </>
-            ) : (
+            ) : view === 'editor' ? (
               <EraserEditor
                 repoName={workspace.activeRepo?.name ?? 'Untitled'}
                 repoPath={workspace.activeRepo?.path ?? ''}
                 graph={graph}
                 sse={sse}
-                onBack={() => setView('dashboard')}
+                onBack={() => transitionTo('dashboard')}
+                onExportSave={handleExportSave}
+              />
+            ) : view === 'chatcode' ? (
+              <ChatCodeView
+                repoName={workspace.activeRepo?.name ?? 'Untitled'}
+                repoPath={workspace.activeRepo?.path ?? ''}
+                onBack={() => transitionTo('dashboard')}
+              />
+            ) : (
+              <AIDiagramView
+                repoName={aiDiagramRepoName || 'No Repository'}
+                repoPath={aiDiagramRepoPath}
+                onBack={() => transitionTo('dashboard')}
+                onExportSave={(tool, query, nodes, edges) => {
+                  const repoId = workspace.repos.find(r => r.path === aiDiagramRepoPath)?.id;
+                  if (repoId) {
+                    workspace.saveDiagram(repoId, aiDiagramRepoName || 'AI Diagram', tool, query, nodes, edges);
+                  }
+                }}
               />
             )}
           </div>
@@ -186,11 +310,38 @@ const App: FC = () => {
           {/* ── Add repo dialog ────────────────────────────── */}
           <AddRepoDialog
             open={addRepoOpen}
-            onClose={() => { setAddRepoOpen(false); setScanError(null); }}
+            onClose={() => { setAddRepoOpen(false); setScanError(null); setAddRepoFromChat(false); }}
             onSubmit={handleAddRepo}
             isScanning={isScanning}
             error={scanError}
             onClearError={() => setScanError(null)}
+          />
+
+          {/* ── Repo select dialog for ChatCode ────────────── */}
+          <RepoSelectDialog
+            open={repoSelectOpen}
+            onClose={() => setRepoSelectOpen(false)}
+            repos={workspace.repos.filter((r) => r.ready)}
+            onSelectRepo={handleChatRepoSelected}
+            onAddRepo={handleAddRepoFromChat}
+          />
+
+          {/* ── Repo select dialog for AI Diagram ──────────── */}
+          <RepoSelectDialog
+            open={aiDiagramRepoSelectOpen}
+            onClose={() => setAiDiagramRepoSelectOpen(false)}
+            repos={workspace.repos.filter((r) => r.ready)}
+            onSelectRepo={handleAiDiagramRepoSelected}
+            onAddRepo={() => {
+              setAiDiagramRepoSelectOpen(false);
+              setAddRepoOpen(true);
+            }}
+            title="AI Diagram — Select Repository"
+            description="Pick a repository for context, or generate a diagram without one."
+            icon="lucide:sparkles"
+            iconColor="text-purple-400"
+            onSkipRepo={handleAiDiagramSkipRepo}
+            skipLabel="Generate without repository"
           />
         </div>
     </TooltipProvider>

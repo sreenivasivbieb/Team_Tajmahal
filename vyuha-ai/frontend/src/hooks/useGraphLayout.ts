@@ -1,11 +1,14 @@
 // ---------------------------------------------------------------------------
-// hooks/useGraphLayout.ts — dagre layout computation + tree layout for call chains
+// hooks/useGraphLayout.ts — ELK layout computation + tree layout for call chains
 // ---------------------------------------------------------------------------
 
 import { useCallback, useRef } from 'react';
 import type { Node as ReactFlowNode, Edge as ReactFlowEdge } from 'reactflow';
-import dagre from 'dagre';
+import ELK from 'elkjs/lib/elk.bundled.js';
+import type { ElkNode } from 'elkjs';
 import type { CallChainMeta } from '../types/graph';
+
+const elk = new ELK();
 
 // ---------------------------------------------------------------------------
 // Node size helpers — consistent sizes by type
@@ -44,10 +47,10 @@ function getNodeHeight(type: string): number {
 }
 
 // ---------------------------------------------------------------------------
-// Pure function: applies dagre layout to ReactFlow nodes and edges
+// Pure async function: applies ELK layout to ReactFlow nodes and edges
 // ---------------------------------------------------------------------------
 
-export const applyDagreLayout = (
+export const applyElkLayout = async (
   nodes: ReactFlowNode[],
   edges: ReactFlowEdge[],
   options: {
@@ -56,76 +59,60 @@ export const applyDagreLayout = (
     rankSep?: number;
     rankByType?: boolean;
   } = {},
-): { nodes: ReactFlowNode[]; edges: ReactFlowEdge[] } => {
+): Promise<{ nodes: ReactFlowNode[]; edges: ReactFlowEdge[] }> => {
   if (nodes.length === 0) {
     return { nodes, edges };
   }
 
-  const g = new dagre.graphlib.Graph({ compound: false });
-  g.setDefaultEdgeLabel(() => ({}));
-
-  g.setGraph({
-    rankdir:  options.direction ?? 'TB',
-    nodesep:  options.nodeSep   ?? 70,
-    ranksep:  options.rankSep   ?? 90,
-    marginx:  50,
-    marginy:  50,
-    ranker:   'network-simplex',
-  });
-
-  // Assign rank hints by node type for cleaner hierarchy
-  const typeRankHint: Record<string, number> = {
-    repository:       0,
-    service:          1,
-    package:          2,
-    file:             3,
-    function:         4,
-    struct:           4,
-    interface:        4,
-    data_flow:        5,
-    cloud_service:    6,
-    runtime_instance: 6,
-  };
-
-  nodes.forEach((n) => {
-    const nodeType = n.data?.type as string;
-    const w = n.width  ?? getNodeWidth(nodeType);
-    const h = n.height ?? getNodeHeight(nodeType);
-
-    g.setNode(n.id, {
-      width:  w,
-      height: h,
-      rank: options.rankByType
-        ? (typeRankHint[nodeType] ?? 4)
-        : undefined,
-    });
-  });
-
-  // Only add edges that exist between visible nodes
   const nodeIds = new Set(nodes.map((n) => n.id));
 
-  edges.forEach((e) => {
-    if (nodeIds.has(e.source) && nodeIds.has(e.target)) {
-      if (e.source !== e.target) {
-        g.setEdge(e.source, e.target);
-      }
-    }
-  });
+  // Map direction to ELK equivalents
+  const elkDirection = options.direction === 'LR' ? 'RIGHT' : 'DOWN';
 
-  dagre.layout(g);
+  // Build ELK graph
+  const elkGraph: ElkNode = {
+    id: 'root',
+    layoutOptions: {
+      'elk.algorithm': 'mrtree',
+      'elk.direction': elkDirection,
+      'elk.spacing.nodeNode': String(options.nodeSep ?? 70),
+      'elk.mrtree.spacing.nodeNode': String(options.rankSep ?? 90),
+      'elk.padding': '[top=50,left=50,bottom=50,right=50]',
+    },
+    children: nodes.map((n) => {
+      const nodeType = n.data?.type as string;
+      return {
+        id: n.id,
+        width: n.width ?? getNodeWidth(nodeType),
+        height: n.height ?? getNodeHeight(nodeType),
+      };
+    }),
+    edges: edges
+      .filter(
+        (e) =>
+          nodeIds.has(e.source) &&
+          nodeIds.has(e.target) &&
+          e.source !== e.target,
+      )
+      .map((e) => ({
+        id: e.id,
+        sources: [e.source],
+        targets: [e.target],
+      })),
+  };
+
+  const layoutResult = await elk.layout(elkGraph);
+
+  // Map ELK positions back onto ReactFlow nodes
+  const positionMap = new Map<string, { x: number; y: number }>();
+  for (const child of layoutResult.children ?? []) {
+    positionMap.set(child.id, { x: child.x ?? 0, y: child.y ?? 0 });
+  }
 
   const layoutedNodes = nodes.map((n) => {
-    const pos = g.node(n.id);
+    const pos = positionMap.get(n.id);
     if (!pos) return n;
-
-    const nodeType = n.data?.type as string;
-    return {
-      ...n,
-      position: {
-        x: pos.x - (n.width  ?? getNodeWidth(nodeType))  / 2,
-        y: pos.y - (n.height ?? getNodeHeight(nodeType)) / 2,
-      },
-    };
+    return { ...n, position: pos };
   });
 
   return { nodes: layoutedNodes, edges };
@@ -136,11 +123,11 @@ export const applyDagreLayout = (
 // using depths from CallChainMeta
 // ---------------------------------------------------------------------------
 
-export const applyTreeLayout = (
+export const applyTreeLayout = async (
   nodes: ReactFlowNode[],
   edges: ReactFlowEdge[],
   meta: CallChainMeta,
-): { nodes: ReactFlowNode[]; edges: ReactFlowEdge[] } => {
+): Promise<{ nodes: ReactFlowNode[]; edges: ReactFlowEdge[] }> => {
   if (nodes.length === 0) return { nodes, edges };
 
   // Group nodes by depth level
@@ -156,35 +143,82 @@ export const applyTreeLayout = (
     if (depth > maxDepth) maxDepth = depth;
   }
 
-  const NODE_W = 240;
-  const NODE_H = 120;
-  const H_GAP = 50;
-  const V_GAP = 60;
+  const NODE_W = 140;
+  const NODE_H = 90;
+  const H_GAP = 60;
+  const V_GAP = 50;
 
-  const layoutedNodes = nodes.map((n) => {
-    const depth = meta.depths[n.id] ?? -1;
-    const bucket = depthBuckets.get(depth) ?? [n];
-    const idx = bucket.indexOf(n);
-    const count = bucket.length;
+  // Build ELK graph with layer constraints derived from call-chain depth
+  const elkGraph: ElkNode = {
+    id: 'root',
+    layoutOptions: {
+      'elk.algorithm': 'mrtree',
+      'elk.direction': 'RIGHT',
+      'elk.spacing.nodeNode': String(H_GAP),
+      'elk.mrtree.spacing.nodeNode': String(V_GAP),
+      'elk.padding': '[top=50,left=50,bottom=50,right=50]',
+    },
+    children: nodes.map((n) => {
+      return {
+        id: n.id,
+        width: NODE_W,
+        height: NODE_H,
+      };
+    }),
+    edges: edges
+      .filter(
+        (e) =>
+          new Set(nodes.map((n) => n.id)).has(e.source) &&
+          new Set(nodes.map((n) => n.id)).has(e.target) &&
+          e.source !== e.target,
+      )
+      .map((e) => ({
+        id: e.id,
+        sources: [e.source],
+        targets: [e.target],
+      })),
+  };
 
-    // Center each row horizontally
-    const totalWidth = count * NODE_W + (count - 1) * H_GAP;
-    const startX = -totalWidth / 2;
+  try {
+    const layoutResult = await elk.layout(elkGraph);
 
-    return {
-      ...n,
-      position: {
-        x: startX + idx * (NODE_W + H_GAP),
-        y: (depth + 1) * (NODE_H + V_GAP), // +1 so callers at depth -1 appear at y=0
-      },
-    };
-  });
+    const positionMap = new Map<string, { x: number; y: number }>();
+    for (const child of layoutResult.children ?? []) {
+      positionMap.set(child.id, { x: child.x ?? 0, y: child.y ?? 0 });
+    }
 
-  return { nodes: layoutedNodes, edges };
+    const layoutedNodes = nodes.map((n) => {
+      const pos = positionMap.get(n.id);
+      if (!pos) return n;
+      return { ...n, position: pos };
+    });
+
+    return { nodes: layoutedNodes, edges };
+  } catch {
+    // Fallback: manual tree layout if ELK fails with the depth constraints
+    const layoutedNodes = nodes.map((n) => {
+      const depth = meta.depths[n.id] ?? -1;
+      const bucket = depthBuckets.get(depth) ?? [n];
+      const idx = bucket.indexOf(n);
+      const count = bucket.length;
+      const totalWidth = count * NODE_W + (count - 1) * H_GAP;
+      const startX = -totalWidth / 2;
+
+      return {
+        ...n,
+        position: {
+          x: startX + idx * (NODE_W + H_GAP),
+          y: (depth + 1) * (NODE_H + V_GAP),
+        },
+      };
+    });
+
+    return { nodes: layoutedNodes, edges };
+  }
 };
 
 // ---------------------------------------------------------------------------
-// Hook: provides memoized layout computation with caching
+// Hook: provides memoized async layout computation with caching
 // ---------------------------------------------------------------------------
 
 export function useGraphLayout() {
@@ -195,11 +229,11 @@ export function useGraphLayout() {
   } | null>(null);
 
   const computeLayout = useCallback(
-    (
+    async (
       nodes: ReactFlowNode[],
       edges: ReactFlowEdge[],
       direction: 'TB' | 'LR' = 'TB',
-    ): ReactFlowNode[] => {
+    ): Promise<ReactFlowNode[]> => {
       const nodeIds = nodes.map((n) => n.id).sort().join(',');
       const edgeIds = edges.map((e) => `${e.source}-${e.target}`).sort().join(',');
 
@@ -211,12 +245,12 @@ export function useGraphLayout() {
         return cacheRef.current.result;
       }
 
-      const { nodes: result } = applyDagreLayout(nodes, edges, { direction });
+      const { nodes: result } = await applyElkLayout(nodes, edges, { direction });
       cacheRef.current = { nodeIds, edgeIds, result };
       return result;
     },
     [],
   );
 
-  return { computeLayout, applyDagreLayout };
+  return { computeLayout, applyElkLayout };
 }

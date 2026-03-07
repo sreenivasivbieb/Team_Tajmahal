@@ -51,7 +51,7 @@ export interface UseWorkspaceReturn {
   setActiveRepo: (repoId: string | null) => void;
 
   /** Save a diagram entry. */
-  saveDiagram: (repoId: string, name: string, tool: string, query: string) => SavedDiagram;
+  saveDiagram: (repoId: string, name: string, tool: string, query: string, nodes?: unknown[], edges?: unknown[]) => SavedDiagram;
 
   /** Remove a diagram. */
   removeDiagram: (diagramId: string) => void;
@@ -61,6 +61,9 @@ export interface UseWorkspaceReturn {
 
   /** Rename a diagram. */
   renameDiagram: (diagramId: string, newName: string) => void;
+
+  /** Touch a diagram — update its editedAt timestamp. */
+  touchDiagram: (diagramId: string) => void;
 }
 
 export function useWorkspace(): UseWorkspaceReturn {
@@ -125,7 +128,7 @@ export function useWorkspace(): UseWorkspaceReturn {
   // ---- Diagrams ------------------------------------------------------------
 
   const saveDiagram = useCallback(
-    (repoId: string, name: string, tool: string, query: string): SavedDiagram => {
+    (repoId: string, name: string, tool: string, query: string, nodes?: unknown[], edges?: unknown[]): SavedDiagram => {
       const entry: SavedDiagram = {
         id: generateId(),
         repoId,
@@ -134,6 +137,8 @@ export function useWorkspace(): UseWorkspaceReturn {
         query,
         createdAt: new Date().toISOString(),
         editedAt: new Date().toISOString(),
+        nodes,
+        edges,
       };
       setState((prev) => ({
         ...prev,
@@ -166,6 +171,15 @@ export function useWorkspace(): UseWorkspaceReturn {
     }));
   }, []);
 
+  const touchDiagram = useCallback((diagramId: string) => {
+    setState((prev) => ({
+      ...prev,
+      diagrams: prev.diagrams.map((d) =>
+        d.id === diagramId ? { ...d, editedAt: new Date().toISOString() } : d,
+      ),
+    }));
+  }, []);
+
   // ---- Derived values ------------------------------------------------------
 
   const activeRepo = state.repos.find((r) => r.id === state.activeRepoId) ?? null;
@@ -184,5 +198,6 @@ export function useWorkspace(): UseWorkspaceReturn {
     removeDiagram,
     setActiveDiagram,
     renameDiagram,
+    touchDiagram,
   };
 }

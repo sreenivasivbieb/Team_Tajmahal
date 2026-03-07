@@ -58,12 +58,12 @@ const GraphCanvas: FC<GraphCanvasProps> = ({ graph, sse }) => {
   // Empty state
   if (graph.nodes.length === 0) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-gray-950">
+      <div className="flex h-full w-full items-center justify-center bg-transparent">
         <div className="flex max-w-md flex-col items-center gap-4 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 shadow-lg shadow-blue-500/20">
-            <span className="text-2xl font-bold tracking-tight text-white">V</span>
+            <span className="text-2xl font-bold tracking-tight text-white" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>C</span>
           </div>
-          <h2 className="text-lg font-semibold text-gray-200">VYUHA AI</h2>
+          <h2 className="text-lg font-semibold text-gray-200" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>Codrix.ai</h2>
           <p className="text-sm text-gray-500">
             Select a tool above and enter a query to explore your codebase
           </p>
@@ -91,7 +91,7 @@ const GraphCanvas: FC<GraphCanvasProps> = ({ graph, sse }) => {
           color="#1a2236"
           gap={28}
           size={1}
-          style={{ backgroundColor: '#0c1018' }}
+          style={{ backgroundColor: 'transparent' }}
         />
 
         {isCallChain && <CallChainMarkers />}

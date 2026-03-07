@@ -3,20 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { memo, type FC } from 'react';
-import {
-  Plus,
-  Sparkles,
-  MousePointer2,
-  Square,
-  Circle,
-  ArrowUpRight,
-  Minus,
-  Link2,
-  Type,
-  Search,
-  Frame,
-  MessageSquare,
-} from 'lucide-react';
+import { Icon } from '@iconify/react';
 import {
   Tooltip,
   TooltipContent,
@@ -40,31 +27,35 @@ interface CanvasToolbarProps {
   onToolChange: (tool: CanvasTool) => void;
   onAdd: () => void;
   onAI: () => void;
+  disabled?: boolean;
 }
 
-const MAIN_TOOLS: { tool: CanvasTool; icon: typeof Square; label: string; shortcut: string }[] = [
-  { tool: 'pointer',   icon: MousePointer2, label: 'Select',    shortcut: 'V' },
-  { tool: 'rectangle', icon: Square,         label: 'Rectangle', shortcut: 'R' },
-  { tool: 'circle',    icon: Circle,         label: 'Ellipse',   shortcut: 'O' },
-  { tool: 'arrow',     icon: ArrowUpRight,   label: 'Arrow',     shortcut: 'A' },
-  { tool: 'line',      icon: Minus,          label: 'Line',      shortcut: 'L' },
-  { tool: 'connector', icon: Link2,          label: 'Connector', shortcut: 'D' },
-  { tool: 'text',      icon: Type,           label: 'Text',      shortcut: 'T' },
-  { tool: 'search',    icon: Search,         label: 'Find',      shortcut: 'I' },
+const MAIN_TOOLS: { tool: CanvasTool; icon: string; label: string; shortcut: string }[] = [
+  { tool: 'pointer',   icon: 'lucide:mouse-pointer-2', label: 'Select',    shortcut: 'V' },
+  { tool: 'rectangle', icon: 'lucide:square',           label: 'Rectangle', shortcut: 'R' },
+  { tool: 'circle',    icon: 'lucide:circle',           label: 'Ellipse',   shortcut: 'O' },
+  { tool: 'arrow',     icon: 'lucide:arrow-up-right',   label: 'Arrow',     shortcut: 'A' },
+  { tool: 'line',      icon: 'lucide:minus',            label: 'Line',      shortcut: 'L' },
+  { tool: 'connector', icon: 'lucide:link-2',           label: 'Connector', shortcut: 'D' },
+  { tool: 'text',      icon: 'lucide:type',             label: 'Text',      shortcut: 'T' },
+  { tool: 'search',    icon: 'lucide:search',           label: 'Find',      shortcut: 'I' },
 ];
 
-const BOTTOM_TOOLS: { tool: CanvasTool; icon: typeof Square; label: string; shortcut: string }[] = [
-  { tool: 'frame',   icon: Frame,          label: 'Frame',   shortcut: 'F' },
-  { tool: 'comment', icon: MessageSquare,  label: 'Comment', shortcut: 'C' },
+const BOTTOM_TOOLS: { tool: CanvasTool; icon: string; label: string; shortcut: string }[] = [
+  { tool: 'frame',   icon: 'lucide:frame',           label: 'Frame',   shortcut: 'F' },
+  { tool: 'comment', icon: 'lucide:message-square',   label: 'Comment', shortcut: 'C' },
 ];
 
-const CanvasToolbar: FC<CanvasToolbarProps> = ({ activeTool, onToolChange, onAdd, onAI }) => (
-  <div className="absolute right-4 top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-1">
+// Tools that stay enabled even when canvas has no diagram content
+const ALWAYS_ENABLED = new Set<CanvasTool>(['pointer', 'search']);
+
+const CanvasToolbar: FC<CanvasToolbarProps> = ({ activeTool, onToolChange, onAdd, onAI, disabled }) => (
+  <div className="absolute right-4 top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-1 rounded-xl border border-dashed border-white/[0.12] bg-white/[0.04] backdrop-blur-2xl p-1.5">
     {/* Add button */}
-    <ToolButton icon={Plus} label="Add" shortcut="/" onClick={onAdd} />
+    <ToolButton icon="lucide:plus" label="Add" shortcut="/" onClick={onAdd} />
 
     {/* AI button */}
-    <ToolButton icon={Sparkles} label="AI" shortcut="Ctrl J" onClick={onAI} className="text-purple-400" />
+    <ToolButton icon="lucide:sparkles" label="AI" shortcut="Ctrl J" onClick={onAI} className="text-purple-400" />
 
     <div className="my-1 h-px w-6 bg-gray-700" />
 
@@ -77,6 +68,7 @@ const CanvasToolbar: FC<CanvasToolbarProps> = ({ activeTool, onToolChange, onAdd
         shortcut={t.shortcut}
         isActive={activeTool === t.tool}
         onClick={() => onToolChange(t.tool)}
+        disabled={disabled && !ALWAYS_ENABLED.has(t.tool)}
       />
     ))}
 
@@ -91,6 +83,7 @@ const CanvasToolbar: FC<CanvasToolbarProps> = ({ activeTool, onToolChange, onAdd
         shortcut={t.shortcut}
         isActive={activeTool === t.tool}
         onClick={() => onToolChange(t.tool)}
+        disabled={disabled && !ALWAYS_ENABLED.has(t.tool)}
       />
     ))}
   </div>
@@ -101,33 +94,38 @@ const CanvasToolbar: FC<CanvasToolbarProps> = ({ activeTool, onToolChange, onAdd
 // ---------------------------------------------------------------------------
 
 interface ToolButtonProps {
-  icon: typeof Square;
+  icon: string;
   label: string;
   shortcut: string;
   isActive?: boolean;
   onClick: () => void;
   className?: string;
+  disabled?: boolean;
 }
 
 const ToolButton: FC<ToolButtonProps> = ({
-  icon: Icon,
+  icon,
   label,
   shortcut,
   isActive,
   onClick,
   className,
+  disabled,
 }) => (
   <Tooltip>
     <TooltipTrigger asChild>
       <button
-        onClick={onClick}
+        onClick={disabled ? undefined : onClick}
+        disabled={disabled}
         className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-          isActive
-            ? 'bg-blue-600/20 text-blue-400'
-            : `text-gray-400 hover:bg-gray-800 hover:text-gray-200 ${className ?? ''}`
+          disabled
+            ? 'cursor-not-allowed text-gray-600 opacity-40'
+            : isActive
+              ? 'bg-blue-600/20 text-blue-400'
+              : `text-gray-400 hover:bg-gray-800 hover:text-gray-200 ${className ?? ''}`
         }`}
       >
-        <Icon size={16} />
+        <Icon icon={icon} width={16} />
       </button>
     </TooltipTrigger>
     <TooltipContent side="left" className="text-xs">

@@ -1,150 +1,195 @@
 // ---------------------------------------------------------------------------
-// icons/LanguageIcon.tsx — Language badge for eraser.io-style nodes
+// icons/LanguageIcon.tsx — Iconify-powered language icon for architecture nodes
 // ---------------------------------------------------------------------------
 
 import { memo, type FC } from 'react';
-import { Package } from 'lucide-react';
+import { Icon } from '@iconify/react';
 
 // ---- Language definitions --------------------------------------------------
 
 interface LanguageDef {
-  abbrev: string;
-  color: string;
-  textColor: string;
+  icon: string;       // Iconify icon name
+  color: string;      // Accent / background tint colour
+  bgColor?: string;   // Optional explicit background (falls back to color)
 }
 
-const DEFAULT_LANG: LanguageDef = { abbrev: '?', color: '#6B7280', textColor: '#ffffff' };
+const DEFAULT_LANG: LanguageDef = { icon: 'mdi:file-code-outline', color: '#6B7280' };
 
 const LANGUAGES: Record<string, LanguageDef> = {
   // TypeScript / JavaScript
-  ts:     { abbrev: 'TS',  color: '#3178C6', textColor: '#fff' },
-  tsx:    { abbrev: 'TX',  color: '#3178C6', textColor: '#fff' },
-  mts:    { abbrev: 'TS',  color: '#3178C6', textColor: '#fff' },
-  cts:    { abbrev: 'TS',  color: '#3178C6', textColor: '#fff' },
-  js:     { abbrev: 'JS',  color: '#F7DF1E', textColor: '#000' },
-  jsx:    { abbrev: 'JX',  color: '#F7DF1E', textColor: '#000' },
-  mjs:    { abbrev: 'JS',  color: '#F7DF1E', textColor: '#000' },
-  cjs:    { abbrev: 'JS',  color: '#F7DF1E', textColor: '#000' },
+  ts:     { icon: 'devicon:typescript',            color: '#3178C6' },
+  tsx:    { icon: 'devicon:typescript',            color: '#3178C6' },
+  mts:    { icon: 'devicon:typescript',            color: '#3178C6' },
+  cts:    { icon: 'devicon:typescript',            color: '#3178C6' },
+  js:     { icon: 'devicon:javascript',            color: '#F7DF1E' },
+  jsx:    { icon: 'devicon:react',                 color: '#61DAFB' },
+  mjs:    { icon: 'devicon:javascript',            color: '#F7DF1E' },
+  cjs:    { icon: 'devicon:javascript',            color: '#F7DF1E' },
 
   // Go
-  go:     { abbrev: 'Go',  color: '#00ADD8', textColor: '#fff' },
+  go:     { icon: 'devicon:go',                    color: '#00ADD8' },
 
   // Python
-  py:     { abbrev: 'Py',  color: '#3776AB', textColor: '#fff' },
-  pyw:    { abbrev: 'Py',  color: '#3776AB', textColor: '#fff' },
-  pyi:    { abbrev: 'Py',  color: '#3776AB', textColor: '#fff' },
+  py:     { icon: 'devicon:python',                color: '#3776AB' },
+  pyw:    { icon: 'devicon:python',                color: '#3776AB' },
+  pyi:    { icon: 'devicon:python',                color: '#3776AB' },
 
   // Rust
-  rs:     { abbrev: 'Rs',  color: '#DEA584', textColor: '#1a1a1a' },
+  rs:     { icon: 'devicon:rust',                  color: '#DEA584' },
 
   // Java / JVM
-  java:   { abbrev: 'Jv',  color: '#ED8B00', textColor: '#fff' },
-  kt:     { abbrev: 'Kt',  color: '#7F52FF', textColor: '#fff' },
-  kts:    { abbrev: 'Kt',  color: '#7F52FF', textColor: '#fff' },
-  scala:  { abbrev: 'Sc',  color: '#DC322F', textColor: '#fff' },
-  groovy: { abbrev: 'Gr',  color: '#4298B8', textColor: '#fff' },
-  clj:    { abbrev: 'Cj',  color: '#5881D8', textColor: '#fff' },
+  java:   { icon: 'devicon:java',                  color: '#ED8B00' },
+  kt:     { icon: 'devicon:kotlin',                color: '#7F52FF' },
+  kts:    { icon: 'devicon:kotlin',                color: '#7F52FF' },
+  scala:  { icon: 'devicon:scala',                 color: '#DC322F' },
+  groovy: { icon: 'devicon:groovy',                color: '#4298B8' },
+  clj:    { icon: 'devicon:clojure',               color: '#5881D8' },
 
   // C family
-  c:      { abbrev: 'C',   color: '#A8B9CC', textColor: '#1a1a1a' },
-  h:      { abbrev: 'H',   color: '#A8B9CC', textColor: '#1a1a1a' },
-  cpp:    { abbrev: 'C+',  color: '#00599C', textColor: '#fff' },
-  cc:     { abbrev: 'C+',  color: '#00599C', textColor: '#fff' },
-  cxx:    { abbrev: 'C+',  color: '#00599C', textColor: '#fff' },
-  hpp:    { abbrev: 'H+',  color: '#00599C', textColor: '#fff' },
-  hh:     { abbrev: 'H+',  color: '#00599C', textColor: '#fff' },
-  cs:     { abbrev: 'C#',  color: '#239120', textColor: '#fff' },
-  m:      { abbrev: 'OC',  color: '#438EFF', textColor: '#fff' },  // Objective-C
+  c:      { icon: 'devicon:c',                     color: '#A8B9CC' },
+  h:      { icon: 'devicon:c',                     color: '#A8B9CC' },
+  cpp:    { icon: 'devicon:cplusplus',             color: '#00599C' },
+  cc:     { icon: 'devicon:cplusplus',             color: '#00599C' },
+  cxx:    { icon: 'devicon:cplusplus',             color: '#00599C' },
+  hpp:    { icon: 'devicon:cplusplus',             color: '#00599C' },
+  hh:     { icon: 'devicon:cplusplus',             color: '#00599C' },
+  cs:     { icon: 'devicon:csharp',                color: '#239120' },
+  m:      { icon: 'devicon:objectivec',            color: '#438EFF' },
 
   // Web
-  html:   { abbrev: '<>',  color: '#E34F26', textColor: '#fff' },
-  htm:    { abbrev: '<>',  color: '#E34F26', textColor: '#fff' },
-  css:    { abbrev: 'Cs',  color: '#1572B6', textColor: '#fff' },
-  scss:   { abbrev: 'Sc',  color: '#CC6699', textColor: '#fff' },
-  sass:   { abbrev: 'Sa',  color: '#CC6699', textColor: '#fff' },
-  less:   { abbrev: 'Le',  color: '#1D365D', textColor: '#fff' },
-  vue:    { abbrev: 'Vu',  color: '#4FC08D', textColor: '#fff' },
-  svelte: { abbrev: 'Sv',  color: '#FF3E00', textColor: '#fff' },
-  astro:  { abbrev: 'As',  color: '#FF5D01', textColor: '#fff' },
+  html:   { icon: 'devicon:html5',                 color: '#E34F26' },
+  htm:    { icon: 'devicon:html5',                 color: '#E34F26' },
+  css:    { icon: 'devicon:css3',                  color: '#1572B6' },
+  scss:   { icon: 'devicon:sass',                  color: '#CC6699' },
+  sass:   { icon: 'devicon:sass',                  color: '#CC6699' },
+  less:   { icon: 'devicon:less',                  color: '#1D365D' },
+  vue:    { icon: 'devicon:vuejs',                 color: '#4FC08D' },
+  svelte: { icon: 'devicon:svelte',                color: '#FF3E00' },
+  astro:  { icon: 'devicon:astro',                 color: '#FF5D01' },
 
   // Scripting
-  rb:     { abbrev: 'Rb',  color: '#CC342D', textColor: '#fff' },
-  php:    { abbrev: 'Ph',  color: '#777BB4', textColor: '#fff' },
-  lua:    { abbrev: 'Lu',  color: '#000080', textColor: '#fff' },
-  pl:     { abbrev: 'Pl',  color: '#39457E', textColor: '#fff' },
-  r:      { abbrev: 'R',   color: '#276DC3', textColor: '#fff' },
+  rb:     { icon: 'devicon:ruby',                  color: '#CC342D' },
+  php:    { icon: 'devicon:php',                   color: '#777BB4' },
+  lua:    { icon: 'devicon:lua',                   color: '#000080' },
+  pl:     { icon: 'devicon:perl',                  color: '#39457E' },
+  r:      { icon: 'devicon:r',                     color: '#276DC3' },
 
   // Apple / Mobile
-  swift:  { abbrev: 'Sw',  color: '#F05138', textColor: '#fff' },
-  dart:   { abbrev: 'Dt',  color: '#0175C2', textColor: '#fff' },
+  swift:  { icon: 'devicon:swift',                 color: '#F05138' },
+  dart:   { icon: 'devicon:dart',                  color: '#0175C2' },
 
   // Functional
-  hs:     { abbrev: 'Hs',  color: '#5e5086', textColor: '#fff' },
-  ex:     { abbrev: 'Ex',  color: '#6E4A7E', textColor: '#fff' },
-  exs:    { abbrev: 'Ex',  color: '#6E4A7E', textColor: '#fff' },
-  erl:    { abbrev: 'Er',  color: '#A90533', textColor: '#fff' },
-  ml:     { abbrev: 'ML',  color: '#EC6813', textColor: '#fff' },
-  fs:     { abbrev: 'F#',  color: '#378BBA', textColor: '#fff' },
-  fsx:    { abbrev: 'F#',  color: '#378BBA', textColor: '#fff' },
+  hs:     { icon: 'devicon:haskell',               color: '#5e5086' },
+  ex:     { icon: 'devicon:elixir',                color: '#6E4A7E' },
+  exs:    { icon: 'devicon:elixir',                color: '#6E4A7E' },
+  erl:    { icon: 'devicon:erlang',                color: '#A90533' },
+  ml:     { icon: 'devicon:ocaml',                 color: '#EC6813' },
+  fs:     { icon: 'devicon:fsharp',                color: '#378BBA' },
+  fsx:    { icon: 'devicon:fsharp',                color: '#378BBA' },
 
   // Systems
-  zig:    { abbrev: 'Zi',  color: '#F7A41D', textColor: '#1a1a1a' },
-  nim:    { abbrev: 'Ni',  color: '#FFE953', textColor: '#1a1a1a' },
-  v:      { abbrev: 'V',   color: '#5D87BF', textColor: '#fff' },
+  zig:    { icon: 'devicon:zig',                   color: '#F7A41D' },
+  nim:    { icon: 'devicon:nimble',                color: '#FFE953' },
+  v:      { icon: 'mdi:language-v',                color: '#5D87BF' },
 
   // Data / Config
-  json:   { abbrev: '{}',  color: '#292929', textColor: '#fff' },
-  jsonc:  { abbrev: '{}',  color: '#292929', textColor: '#fff' },
-  yaml:   { abbrev: 'Ym',  color: '#CB171E', textColor: '#fff' },
-  yml:    { abbrev: 'Ym',  color: '#CB171E', textColor: '#fff' },
-  toml:   { abbrev: 'Tm',  color: '#9C4121', textColor: '#fff' },
-  xml:    { abbrev: 'Xl',  color: '#0060AC', textColor: '#fff' },
-  graphql:{ abbrev: 'Gq',  color: '#E535AB', textColor: '#fff' },
-  gql:    { abbrev: 'Gq',  color: '#E535AB', textColor: '#fff' },
-  proto:  { abbrev: 'Pb',  color: '#4285F4', textColor: '#fff' },
+  json:   { icon: 'mdi:code-json',                color: '#292929' },
+  jsonc:  { icon: 'mdi:code-json',                color: '#292929' },
+  yaml:   { icon: 'mdi:file-cog-outline',         color: '#CB171E' },
+  yml:    { icon: 'mdi:file-cog-outline',         color: '#CB171E' },
+  toml:   { icon: 'mdi:file-cog-outline',         color: '#9C4121' },
+  xml:    { icon: 'mdi:xml',                       color: '#0060AC' },
+  graphql:{ icon: 'devicon:graphql',               color: '#E535AB' },
+  gql:    { icon: 'devicon:graphql',               color: '#E535AB' },
+  proto:  { icon: 'mdi:google',                    color: '#4285F4' },
 
   // Shell
-  sh:     { abbrev: '$_',  color: '#4EAA25', textColor: '#fff' },
-  bash:   { abbrev: '$_',  color: '#4EAA25', textColor: '#fff' },
-  zsh:    { abbrev: '$_',  color: '#4EAA25', textColor: '#fff' },
-  fish:   { abbrev: '$_',  color: '#4EAA25', textColor: '#fff' },
-  ps1:    { abbrev: 'PS',  color: '#012456', textColor: '#fff' },
-  bat:    { abbrev: 'Bt',  color: '#C1F12E', textColor: '#1a1a1a' },
-  cmd:    { abbrev: 'Cd',  color: '#C1F12E', textColor: '#1a1a1a' },
+  sh:     { icon: 'devicon:bash',                  color: '#4EAA25' },
+  bash:   { icon: 'devicon:bash',                  color: '#4EAA25' },
+  zsh:    { icon: 'devicon:bash',                  color: '#4EAA25' },
+  fish:   { icon: 'devicon:bash',                  color: '#4EAA25' },
+  ps1:    { icon: 'devicon:powershell',            color: '#012456' },
+  bat:    { icon: 'mdi:console',                   color: '#C1F12E' },
+  cmd:    { icon: 'mdi:console',                   color: '#C1F12E' },
 
   // SQL
-  sql:    { abbrev: 'Sq',  color: '#e38c00', textColor: '#fff' },
+  sql:    { icon: 'mdi:database',                  color: '#e38c00' },
 
   // Docs
-  md:     { abbrev: 'Md',  color: '#083FA1', textColor: '#fff' },
-  mdx:    { abbrev: 'Mx',  color: '#083FA1', textColor: '#fff' },
-  txt:    { abbrev: 'Tx',  color: '#6B7280', textColor: '#fff' },
+  md:     { icon: 'devicon:markdown',              color: '#083FA1' },
+  mdx:    { icon: 'devicon:markdown',              color: '#083FA1' },
+  txt:    { icon: 'mdi:file-document-outline',     color: '#6B7280' },
 
   // Docker / Infra
-  dockerfile: { abbrev: 'Dk', color: '#2496ED', textColor: '#fff' },
-  tf:     { abbrev: 'Tf',  color: '#7B42BC', textColor: '#fff' },
-  hcl:    { abbrev: 'Hc',  color: '#7B42BC', textColor: '#fff' },
+  dockerfile: { icon: 'devicon:docker',            color: '#2496ED' },
+  tf:     { icon: 'devicon:terraform',             color: '#7B42BC' },
+  hcl:    { icon: 'devicon:terraform',             color: '#7B42BC' },
 
   // WASM
-  wasm:   { abbrev: 'Wa',  color: '#654FF0', textColor: '#fff' },
-  wat:    { abbrev: 'Wa',  color: '#654FF0', textColor: '#fff' },
+  wasm:   { icon: 'mdi:hexagon-outline',           color: '#654FF0' },
+  wat:    { icon: 'mdi:hexagon-outline',           color: '#654FF0' },
+};
+
+// ---- Annotation → Iconify icon mapping -------------------------------------
+
+const ANNOTATION_ICONS: Record<string, { icon: string; color: string }> = {
+  db:       { icon: 'mdi:database',                  color: '#3B82F6' },
+  store:    { icon: 'mdi:database',                  color: '#3B82F6' },
+  external: { icon: 'mdi:package-variant-closed',    color: '#8B5CF6' },
+  ext:      { icon: 'mdi:package-variant-closed',    color: '#8B5CF6' },
+  leaf:     { icon: 'mdi:leaf',                       color: '#10B981' },
+  cycle:    { icon: 'mdi:refresh',                    color: '#F59E0B' },
+  error:    { icon: 'mdi:alert-circle',               color: '#EF4444' },
+  api:      { icon: 'mdi:api',                        color: '#F97316' },
+  route:    { icon: 'mdi:routes',                     color: '#06B6D4' },
+  handler:  { icon: 'mdi:function-variant',           color: '#8B5CF6' },
+  config:   { icon: 'mdi:cog',                        color: '#6B7280' },
+  test:     { icon: 'mdi:test-tube',                  color: '#22C55E' },
+  auth:     { icon: 'mdi:shield-lock-outline',        color: '#EAB308' },
+  cache:    { icon: 'mdi:cached',                     color: '#14B8A6' },
+  queue:    { icon: 'mdi:tray-full',                  color: '#A855F7' },
+  event:    { icon: 'mdi:lightning-bolt',             color: '#F59E0B' },
+  worker:   { icon: 'mdi:cogs',                       color: '#64748B' },
+  middleware:{ icon: 'mdi:layers-triple',              color: '#6366F1' },
 };
 
 // ---- Public helpers --------------------------------------------------------
 
-/**
- * Resolve language definition from a file path or filename.
- */
 export function getLanguageFromPath(filePath: string): LanguageDef {
   if (!filePath) return DEFAULT_LANG;
 
-  // Handle names like "Dockerfile" (no extension)
   const base = filePath.split('/').pop()?.split('\\').pop() ?? '';
   if (base.toLowerCase() === 'dockerfile') return LANGUAGES['dockerfile'];
-  if (base.toLowerCase() === 'makefile') return { abbrev: 'Mk', color: '#6B4C3B', textColor: '#fff' };
+  if (base.toLowerCase() === 'makefile') return { icon: 'mdi:wrench', color: '#6B4C3B' };
 
   const ext = base.split('.').pop()?.toLowerCase() ?? '';
   return LANGUAGES[ext] ?? DEFAULT_LANG;
+}
+
+/**
+ * Pick the best Iconify icon for a node based on annotations, then file language.
+ */
+export function resolveNodeIcon(
+  filePath?: string,
+  annotations?: string[],
+  isExternal?: boolean,
+): { icon: string; color: string } {
+  // 1) If external with no file, show package
+  if (isExternal && !filePath) {
+    return { icon: 'mdi:package-variant-closed', color: '#8B5CF6' };
+  }
+
+  // 2) Check annotations for a semantic icon override
+  if (annotations) {
+    for (const a of annotations) {
+      const mapped = ANNOTATION_ICONS[a];
+      if (mapped) return mapped;
+    }
+  }
+
+  // 3) Fall back to language icon
+  const lang = getLanguageFromPath(filePath ?? '');
+  return { icon: lang.icon, color: lang.color };
 }
 
 // ---- Component -------------------------------------------------------------
@@ -152,46 +197,25 @@ export function getLanguageFromPath(filePath: string): LanguageDef {
 interface LanguageIconProps {
   filePath?: string;
   isExternal?: boolean;
-  /** Badge dimension in px (default 32) */
+  annotations?: string[];
+  /** Icon dimension in px (default 40) */
   size?: number;
 }
 
-const LanguageIcon: FC<LanguageIconProps> = ({ filePath, isExternal, size = 32 }) => {
-  // External node with no file — show package icon
-  if (isExternal && !filePath) {
-    return (
-      <div
-        className="flex items-center justify-center rounded-lg"
-        style={{
-          width: size,
-          height: size,
-          backgroundColor: '#4B5563',
-          boxShadow: '0 2px 8px rgba(75, 85, 99, 0.4)',
-        }}
-      >
-        <Package size={size * 0.55} color="#e5e7eb" strokeWidth={2} />
-      </div>
-    );
-  }
-
-  const lang = getLanguageFromPath(filePath ?? '');
+const LanguageIcon: FC<LanguageIconProps> = ({ filePath, isExternal, annotations, size = 40 }) => {
+  const { icon, color } = resolveNodeIcon(filePath, annotations, isExternal);
 
   return (
     <div
-      className="flex items-center justify-center rounded-lg select-none"
+      className="flex items-center justify-center rounded-xl"
       style={{
         width: size,
         height: size,
-        backgroundColor: lang.color,
-        color: lang.textColor,
-        fontSize: size * 0.38,
-        fontWeight: 700,
-        letterSpacing: '-0.02em',
-        lineHeight: 1,
-        boxShadow: `0 2px 10px ${lang.color}50`,
+        background: `${color}18`,
+        boxShadow: `0 2px 12px ${color}25`,
       }}
     >
-      {lang.abbrev}
+      <Icon icon={icon} width={size * 0.6} height={size * 0.6} style={{ color }} />
     </div>
   );
 };

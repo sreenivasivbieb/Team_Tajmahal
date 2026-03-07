@@ -244,7 +244,7 @@ const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHi
   const m = node.metadata;
 
   return (
-    <div className="animate-slide-in-right absolute right-0 top-0 z-50 flex h-full w-[400px] flex-col border-l border-border bg-gray-900 shadow-2xl">
+    <div className="animate-slide-in-right absolute right-0 top-0 z-50 flex h-full w-[400px] flex-col border-l border-white/[0.08] bg-gray-950/80 backdrop-blur-2xl shadow-2xl">
       {/* Header */}
       <div className="flex items-start justify-between border-b border-border px-4 py-3">
         <div className="min-w-0 flex-1">
@@ -375,7 +375,7 @@ const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHi
               >
                 {copied ? '✓ Copied' : 'Copy'}
               </Button>
-              <div className="max-h-64 overflow-auto rounded bg-gray-950">
+              <div className="max-h-64 overflow-auto rounded bg-black/40">
                 <SyntaxHighlighter
                   language="go"
                   style={vscDarkPlus}
@@ -505,7 +505,7 @@ const DetailPanel: FC<DetailPanelProps> = ({ node, onClose, onNavigate, onNodeHi
                 <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-blue-400" style={{ animationDelay: '150ms' }} />
                 <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-blue-400" style={{ animationDelay: '300ms' }} />
               </span>
-              VYUHA is analyzing…
+              Codrix is analyzing…
             </div>
           )}
 

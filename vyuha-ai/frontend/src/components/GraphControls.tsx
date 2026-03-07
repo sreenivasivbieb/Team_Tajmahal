@@ -103,8 +103,8 @@ export const GraphControls = ({                                                 
             </Button>                                                             {/* FILTER CONTROLS */}
 
             {open && (                                                            /* FILTER CONTROLS */
-                <div className="mt-2 bg-gray-900 border                           
-                                border-border rounded-lg                          
+                <div className="mt-2 bg-black/30 backdrop-blur-xl border                           
+                                border-white/[0.08] rounded-lg                          
                                 p-3 w-56 space-y-3                                
                                 shadow-xl">                                       {/* FILTER CONTROLS */}
 

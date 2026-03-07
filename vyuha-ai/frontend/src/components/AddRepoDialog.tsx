@@ -14,7 +14,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Loader2, Github, FolderGit2 } from 'lucide-react';
+import { Icon } from '@iconify/react';
 
 /** Matches GitHub HTTPS URLs like https://github.com/owner/repo(.git) */
 const GITHUB_URL_RE = /^https?:\/\/github\.com\/[\w.\-]+\/[\w.\-]+(?:\.git)?\/?$/;
@@ -101,20 +101,20 @@ const AddRepoDialog: FC<AddRepoDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md border-gray-700 bg-gray-900 text-gray-100">
+      <DialogContent className="max-w-md border-white/[0.08] bg-gray-950/80 backdrop-blur-2xl text-gray-100">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-gray-100">
             {isGithubUrl ? (
-              <Github size={18} className="text-purple-400" />
+              <Icon icon="lucide:github" width={18} className="text-purple-400" />
             ) : (
-              <FolderGit2 size={18} className="text-blue-400" />
+              <Icon icon="lucide:folder-git-2" width={18} className="text-blue-400" />
             )}
             {isGithubUrl ? 'Clone from GitHub' : 'Add Repository'}
           </DialogTitle>
           <DialogDescription className="text-gray-500">
             {isGithubUrl
-              ? 'Vyuha will clone the repository and build a semantic tree using contextplus.'
-              : 'Paste a GitHub URL to clone, or enter a local path. Vyuha builds a semantic tree so it\u2019s ready for queries.'}
+              ? 'Codrix will clone the repository and build a semantic tree using contextplus.'
+              : 'Paste a GitHub URL to clone, or enter a local path. Codrix builds a semantic tree so it\u2019s ready for queries.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -183,12 +183,12 @@ const AddRepoDialog: FC<AddRepoDialogProps> = ({
             >
               {isScanning ? (
                 <span className="flex items-center gap-2">
-                  <Loader2 size={14} className="animate-spin" />
+                  <Icon icon="lucide:loader-2" width={14} className="animate-spin" />
                   {isGithubUrl ? 'Cloning…' : 'Scanning…'}
                 </span>
               ) : isGithubUrl ? (
                 <span className="flex items-center gap-2">
-                  <Github size={14} />
+                  <Icon icon="lucide:github" width={14} />
                   Clone & Scan
                 </span>
               ) : (

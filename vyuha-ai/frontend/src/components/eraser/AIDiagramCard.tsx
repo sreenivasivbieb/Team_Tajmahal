@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { memo, useCallback, useState, type FC, type FormEvent } from 'react';
-import { Sparkles, Loader2, ArrowRight } from 'lucide-react';
+import { Icon } from '@iconify/react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
@@ -31,57 +31,51 @@ const AIDiagramCard: FC<AIDiagramCardProps> = ({ onGenerate, isGenerating }) => 
 
   if (!expanded) {
     return (
-      <button
-        onClick={() => setExpanded(true)}
-        className="group flex h-[480px] w-full max-w-[600px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-blue-500/30 bg-gray-900/60 px-8 py-10 transition-all hover:border-blue-400/50 hover:bg-gray-900/80 hover:shadow-xl hover:shadow-blue-500/5"
+      <div
+        className="group flex h-[480px] w-full max-w-[600px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-blue-500/30 bg-white/[0.04] backdrop-blur-xl px-8 py-10 transition-all"
       >
-        {/* Header */}
-        <div className="mb-2 flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-full bg-gray-800 px-3 py-1 text-xs text-gray-300">
-            <svg width="14" height="14" viewBox="0 0 16 16" className="text-blue-400">
-              <path d="M3 1h10l3 3v8l-3 3H3l-3-3V4z" fill="none" stroke="currentColor" strokeWidth="1.2" />
-            </svg>
-            Diagram
-          </div>
-          <div className="flex items-center gap-1 rounded-full bg-blue-600/20 px-3 py-1 text-xs font-medium text-blue-400">
-            Open Editor
-            <ArrowRight size={12} />
-          </div>
-        </div>
-
         {/* Title */}
-        <h3 className="mt-4 text-xl font-semibold text-gray-100">AI Diagram</h3>
+        <h3 className="text-xl font-semibold text-gray-100">AI Diagram</h3>
         <p className="mt-1 text-sm text-gray-500">Generate diagram with natural language</p>
 
         {/* Sparkle icons */}
         <div className="relative mt-8 flex items-center justify-center">
-          <Sparkles
-            size={56}
-            className="text-gray-500/60 transition-colors group-hover:text-blue-400/80"
-            strokeWidth={1}
+          <Icon
+            icon="lucide:sparkles"
+            width={56}
+            className="text-gray-500/60"
           />
-          <Sparkles
-            size={32}
-            className="absolute -left-4 -top-2 text-gray-500/40 transition-colors group-hover:text-purple-400/60"
-            strokeWidth={1.2}
+          <Icon
+            icon="lucide:sparkles"
+            width={32}
+            className="absolute -left-4 -top-2 text-gray-500/40"
           />
-          <Sparkles
-            size={24}
-            className="absolute -bottom-2 -right-6 text-gray-500/30 transition-colors group-hover:text-indigo-400/50"
-            strokeWidth={1.2}
+          <Icon
+            icon="lucide:sparkles"
+            width={24}
+            className="absolute -bottom-2 -right-6 text-gray-500/30"
           />
         </div>
-      </button>
+
+        {/* Open Editor button */}
+        <button
+          onClick={() => setExpanded(true)}
+          className="mt-8 flex w-full max-w-xs items-center justify-center gap-2 rounded-full bg-blue-600/20 px-6 py-2.5 text-sm font-medium text-blue-400 transition-all hover:bg-blue-600/30 hover:text-blue-300 hover:shadow-lg hover:shadow-blue-500/10"
+        >
+          Open Editor
+          <Icon icon="lucide:arrow-right" width={14} />
+        </button>
+      </div>
     );
   }
 
   // ── Expanded state: prompt input ─────────────────────────────────
   return (
-    <div className="flex h-[480px] w-full max-w-[600px] flex-col rounded-2xl border border-gray-700/50 bg-gray-900/90 p-6 shadow-2xl shadow-black/40 backdrop-blur">
+    <div className="flex h-[480px] w-full max-w-[600px] flex-col rounded-2xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl p-6 shadow-2xl shadow-black/40">
       {/* Header */}
       <div className="mb-4 flex items-center gap-2">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-600/20">
-          <Sparkles size={16} className="text-purple-400" />
+          <Icon icon="lucide:sparkles" width={16} className="text-purple-400" />
         </div>
         <div>
           <h3 className="text-sm font-semibold text-gray-100">AI Diagram Generator</h3>
@@ -130,12 +124,12 @@ const AIDiagramCard: FC<AIDiagramCardProps> = ({ onGenerate, isGenerating }) => 
           >
             {isGenerating ? (
               <span className="flex items-center gap-1.5">
-                <Loader2 size={14} className="animate-spin" />
+                <Icon icon="lucide:loader-2" width={14} className="animate-spin" />
                 Generating…
               </span>
             ) : (
               <span className="flex items-center gap-1.5">
-                <Sparkles size={14} />
+                <Icon icon="lucide:sparkles" width={14} />
                 Generate Diagram
               </span>
             )}

@@ -94,6 +94,26 @@ func main() {
 
 	slog.Info("resolved contextplus", "path", cpPath)
 
+	// ---- Load .env next to contextplus into this process too -------------
+	if envFile := filepath.Join(filepath.Dir(cpPath), "..", ".env"); envFile != "" {
+		if data, err := os.ReadFile(envFile); err == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+				if k, v, ok := strings.Cut(line, "="); ok {
+					k = strings.TrimSpace(k)
+					v = strings.Trim(strings.TrimSpace(v), `"'`)
+					if os.Getenv(k) == "" {
+						os.Setenv(k, v)
+					}
+				}
+			}
+			slog.Info("loaded .env into server process", "path", envFile)
+		}
+	}
+
 	// ---- Spawn contextplus MCP bridge ------------------------------------
 	mcp, err := bridge.NewMCPClient(cpPath, absRoot)
 	if err != nil {

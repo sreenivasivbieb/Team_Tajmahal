@@ -33,6 +33,10 @@ export interface SavedDiagram {
   createdAt: string;
   /** ISO timestamp of last edit */
   editedAt: string;
+  /** Serialised ReactFlow nodes (persisted for re-opening) */
+  nodes?: unknown[];
+  /** Serialised ReactFlow edges (persisted for re-opening) */
+  edges?: unknown[];
 }
 
 /** The top-level state stored in localStorage. */

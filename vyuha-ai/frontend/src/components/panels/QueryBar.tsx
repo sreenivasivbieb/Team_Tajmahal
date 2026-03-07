@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { useCallback, useState, type FC, type FormEvent } from 'react';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Icon } from '@iconify/react';
 import { api } from '../../api/client';
 import { TOOLS, type ToolType, type CallChainResponse, type TextResult } from '../../types/graph';
 import { Input } from '@/components/ui/input';
@@ -93,7 +93,7 @@ const QueryBar: FC<QueryBarProps> = ({ onResult, isRunning, repoPath }) => {
   const busy = submitting || !!isRunning;
 
   return (
-    <div className="border-b border-border bg-gray-900/80 px-4 py-2 backdrop-blur">
+    <div className="border-b border-white/[0.08] bg-black/30 backdrop-blur-xl px-4 py-2">
       {/* Tool selector chips */}
       <div className="mb-1.5 flex flex-wrap gap-1.5">
         {TOOLS.map((t) => (
@@ -109,7 +109,7 @@ const QueryBar: FC<QueryBarProps> = ({ onResult, isRunning, repoPath }) => {
             }`}
             onClick={() => setActiveTool(t.key)}
           >
-            {t.key === 'ask-ai' && <Sparkles className="mr-1 h-3 w-3" />}
+            {t.key === 'ask-ai' && <Icon icon="lucide:sparkles" className="mr-1 h-3 w-3" />}
             {t.label}
           </Badge>
         ))}
@@ -134,12 +134,12 @@ const QueryBar: FC<QueryBarProps> = ({ onResult, isRunning, repoPath }) => {
         >
           {busy ? (
             <span className="flex items-center gap-1">
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Icon icon="lucide:loader-2" className="h-3 w-3 animate-spin" />
               {activeTool === 'ask-ai' ? 'Thinking…' : 'Running…'}
             </span>
           ) : activeTool === 'ask-ai' ? (
             <span className="flex items-center gap-1">
-              <Sparkles className="h-3 w-3" />
+              <Icon icon="lucide:sparkles" className="h-3 w-3" />
               Ask
             </span>
           ) : (

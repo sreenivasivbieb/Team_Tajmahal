@@ -1,4 +1,4 @@
-// Agentic RAG bot using Groq tool-calling over the codebase intelligence tools
+// Agentic RAG bot — AWS Bedrock (primary) + Groq (fallback)
 // FEATURE: Conversational codebase Q&A with automatic tool selection and synthesis
 
 import { createInterface } from "readline";
@@ -8,11 +8,37 @@ import { semanticCodeSearch } from "../tools/semantic-search.js";
 import { semanticIdentifierSearch } from "../tools/semantic-identifiers.js";
 import { getBlastRadius } from "../tools/blast-radius.js";
 import { getCallChain } from "../tools/call-chain.js";
+import {
+  BedrockRuntimeClient,
+  ConverseCommand,
+  type Message as BRMessage,
+  type ContentBlock as BRContentBlock,
+  type SystemContentBlock,
+  type Tool as BRTool,
+  type ToolConfiguration,
+  type ToolResultContentBlock,
+  type ConversationRole,
+} from "@aws-sdk/client-bedrock-runtime";
+import type { DocumentType } from "@smithy/types";
 
 const GROQ_BASE = "https://api.groq.com/openai/v1";
-const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_BEDROCK_MODEL = "us.anthropic.claude-sonnet-4-20250514-v1:0";
 const MAX_TOOL_ROUNDS = 6;
 
+// ---------------------------------------------------------------------------
+// Provider detection
+// ---------------------------------------------------------------------------
+function hasAWSCredentials(): boolean {
+  return !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+}
+function hasGroqKey(): boolean {
+  return !!process.env.GROQ_API_KEY;
+}
+
+// ---------------------------------------------------------------------------
+// Shared types (provider-agnostic)
+// ---------------------------------------------------------------------------
 interface Message {
   role: "system" | "user" | "assistant" | "tool";
   content: string | null;
@@ -36,6 +62,13 @@ interface GroqResponse {
     };
     finish_reason: string;
   }[];
+}
+
+// Provider-agnostic LLM response for the agentic loop
+interface LLMTurnResult {
+  content: string | null;
+  toolCalls: ToolCall[];
+  stopReason: "stop" | "tool_use" | "end_turn" | string;
 }
 
 const TOOL_SCHEMAS = [
@@ -156,7 +189,10 @@ Strategy:
 - Never assert that function A calls function B unless a tool result directly confirms it`;
 }
 
-async function callGroq(messages: Message[], apiKey: string, model: string): Promise<GroqResponse> {
+// ---------------------------------------------------------------------------
+// Groq HTTP call (OpenAI-compatible)
+// ---------------------------------------------------------------------------
+async function callGroq(messages: Message[], apiKey: string, model: string, noTools = false): Promise<LLMTurnResult> {
   const response = await fetch(`${GROQ_BASE}/chat/completions`, {
     method: "POST",
     headers: {
@@ -166,8 +202,7 @@ async function callGroq(messages: Message[], apiKey: string, model: string): Pro
     body: JSON.stringify({
       model,
       messages,
-      tools: TOOL_SCHEMAS,
-      tool_choice: "auto",
+      ...(noTools ? {} : { tools: TOOL_SCHEMAS, tool_choice: "auto" }),
       temperature: 0.2,
       max_tokens: 4096,
     }),
@@ -178,7 +213,232 @@ async function callGroq(messages: Message[], apiKey: string, model: string): Pro
     throw new Error(`Groq API error ${response.status}: ${err}`);
   }
 
-  return response.json() as Promise<GroqResponse>;
+  const data = (await response.json()) as GroqResponse;
+  const choice = data.choices[0];
+  return {
+    content: choice.message.content,
+    toolCalls: choice.message.tool_calls ?? [],
+    stopReason: choice.finish_reason,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// AWS Bedrock Converse call (with tool use)
+// ---------------------------------------------------------------------------
+function buildBedrockTools(): ToolConfiguration {
+  const tools = TOOL_SCHEMAS.map((s) => ({
+    toolSpec: {
+      name: s.function.name,
+      description: s.function.description,
+      inputSchema: {
+        json: s.function.parameters,
+      },
+    },
+  })) as unknown as BRTool[];
+  return { tools };
+}
+
+function messagesToBedrock(messages: Message[]): { system: SystemContentBlock[]; brMessages: BRMessage[] } {
+  const system: SystemContentBlock[] = [];
+  const brMessages: BRMessage[] = [];
+
+  // Collect consecutive tool-result messages into a single user turn
+  let pendingToolResults: BRContentBlock[] = [];
+
+  function flushToolResults() {
+    if (pendingToolResults.length > 0) {
+      brMessages.push({ role: "user" as ConversationRole, content: pendingToolResults });
+      pendingToolResults = [];
+    }
+  }
+
+  for (const m of messages) {
+    if (m.role === "system") {
+      flushToolResults();
+      system.push({ text: m.content ?? "" });
+      continue;
+    }
+    if (m.role === "user") {
+      flushToolResults();
+      brMessages.push({ role: "user" as ConversationRole, content: [{ text: m.content ?? "" }] });
+      continue;
+    }
+    if (m.role === "assistant") {
+      flushToolResults();
+      const content: BRContentBlock[] = [];
+      if (m.content) content.push({ text: m.content });
+      if (m.tool_calls) {
+        for (const tc of m.tool_calls) {
+          let input: Record<string, unknown> = {};
+          try { input = JSON.parse(tc.function.arguments); } catch { /* empty */ }
+          content.push({
+            toolUse: { toolUseId: tc.id, name: tc.function.name, input: input as DocumentType },
+          });
+        }
+      }
+      if (content.length > 0) brMessages.push({ role: "assistant" as ConversationRole, content });
+      continue;
+    }
+    if (m.role === "tool") {
+      // Accumulate tool results — Bedrock requires ALL results for a multi-tool
+      // turn to be in a single "user" message with multiple toolResult blocks
+      const resultContent: ToolResultContentBlock[] = [{ text: m.content ?? "" }];
+      pendingToolResults.push({
+        toolResult: {
+          toolUseId: m.tool_call_id!,
+          content: resultContent,
+        },
+      });
+    }
+  }
+
+  flushToolResults();
+  return { system, brMessages };
+}
+
+// Variant that strips all toolUse / toolResult blocks so Bedrock won't
+// require a toolConfig.  Tool interactions are flattened to plain text.
+function messagesToBedrockNoTools(messages: Message[]): { system: SystemContentBlock[]; brMessages: BRMessage[] } {
+  const system: SystemContentBlock[] = [];
+  const brMessages: BRMessage[] = [];
+
+  for (const m of messages) {
+    if (m.role === "system") {
+      system.push({ text: m.content ?? "" });
+      continue;
+    }
+    if (m.role === "user") {
+      brMessages.push({ role: "user" as ConversationRole, content: [{ text: m.content ?? "" }] });
+      continue;
+    }
+    if (m.role === "assistant") {
+      // Keep only the text portion; drop toolUse blocks
+      const textParts: string[] = [];
+      if (m.content) textParts.push(m.content);
+      if (m.tool_calls) {
+        for (const tc of m.tool_calls) {
+          textParts.push(`[Called tool ${tc.function.name}(${tc.function.arguments})]`);
+        }
+      }
+      if (textParts.length > 0) {
+        brMessages.push({ role: "assistant" as ConversationRole, content: [{ text: textParts.join("\n") }] });
+      }
+      continue;
+    }
+    if (m.role === "tool") {
+      // Flatten tool result into a user message
+      const summary = `[Tool ${m.name ?? m.tool_call_id} result]: ${(m.content ?? "").slice(0, 4000)}`;
+      brMessages.push({ role: "user" as ConversationRole, content: [{ text: summary }] });
+      continue;
+    }
+  }
+
+  // Bedrock requires alternating user/assistant. Merge consecutive same-role messages.
+  const merged: BRMessage[] = [];
+  for (const msg of brMessages) {
+    if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
+      merged[merged.length - 1].content!.push(...msg.content!);
+    } else {
+      merged.push({ ...msg, content: [...msg.content!] });
+    }
+  }
+
+  return { system, brMessages: merged };
+}
+
+async function callBedrock(messages: Message[], noTools = false): Promise<LLMTurnResult> {
+  const region = process.env.AWS_REGION || "us-east-1";
+  const modelId = process.env.BEDROCK_MODEL_ID || DEFAULT_BEDROCK_MODEL;
+
+  const client = new BedrockRuntimeClient({
+    region,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      ...(process.env.AWS_SESSION_TOKEN ? { sessionToken: process.env.AWS_SESSION_TOKEN } : {}),
+    },
+  });
+
+  const { system, brMessages } = noTools
+    ? messagesToBedrockNoTools(messages)
+    : messagesToBedrock(messages);
+
+  const command = new ConverseCommand({
+    modelId,
+    messages: brMessages,
+    system,
+    ...(noTools ? {} : { toolConfig: buildBedrockTools() }),
+    inferenceConfig: {
+      maxTokens: 4096,
+      temperature: 0.2,
+    },
+  });
+
+  const response = await client.send(command);
+
+  // Parse response
+  const content: string[] = [];
+  const toolCalls: ToolCall[] = [];
+
+  if (response.output?.message?.content) {
+    for (const block of response.output.message.content) {
+      if ("text" in block && block.text) {
+        content.push(block.text);
+      }
+      if ("toolUse" in block && block.toolUse) {
+        toolCalls.push({
+          id: block.toolUse.toolUseId ?? `tool_${Date.now()}`,
+          type: "function",
+          function: {
+            name: block.toolUse.name ?? "",
+            arguments: JSON.stringify(block.toolUse.input ?? {}),
+          },
+        });
+      }
+    }
+  }
+
+  const stopReason = response.stopReason ?? "stop";
+  return {
+    content: content.join("") || null,
+    toolCalls,
+    stopReason,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Unified LLM call — Bedrock primary, Groq fallback
+// ---------------------------------------------------------------------------
+async function callLLM(messages: Message[], noTools = false): Promise<{ result: LLMTurnResult; provider: string }> {
+  const awsOK = hasAWSCredentials();
+  const groqOK = hasGroqKey();
+
+  if (!awsOK && !groqOK) {
+    throw new Error("Configuration Error: Neither AWS Bedrock nor GROQ API credentials were found.");
+  }
+
+  if (awsOK) {
+    try {
+      const result = await callBedrock(messages, noTools);
+      return { result, provider: "bedrock" };
+    } catch (err) {
+      process.stderr.write(`[rag] Bedrock failed: ${err instanceof Error ? err.message : String(err)}\n`);
+      if (groqOK) {
+        process.stderr.write("[rag] Falling back to Groq\n");
+        const groqKey = process.env.GROQ_API_KEY!;
+        const model = process.env.GROQ_MODEL ?? DEFAULT_GROQ_MODEL;
+        const result = await callGroq(messages, groqKey, model, noTools);
+        return { result, provider: "groq" };
+      }
+      throw new Error("AWS Bedrock is not working and no fallback API key is available.");
+    }
+  }
+
+  // Only Groq
+  const groqKey = process.env.GROQ_API_KEY!;
+  const model = process.env.GROQ_MODEL ?? DEFAULT_GROQ_MODEL;
+  const result = await callGroq(messages, groqKey, model, noTools);
+  return { result, provider: "groq" };
 }
 
 async function executeTool(name: string, args: Record<string, unknown>, rootDir: string): Promise<string> {
@@ -223,30 +483,34 @@ async function executeTool(name: string, args: Record<string, unknown>, rootDir:
   }
 }
 
-export async function answerQuestion(question: string, rootDir: string, apiKey: string, model: string): Promise<string> {
+export async function answerQuestion(question: string, rootDir: string): Promise<string> {
   const messages: Message[] = [
     { role: "system", content: systemPrompt(rootDir) },
     { role: "user", content: question },
   ];
 
+  let provider = "";
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const response = await callGroq(messages, apiKey, model);
-    const choice = response.choices[0];
-    const assistantMessage = choice.message;
+    const llm = await callLLM(messages);
+    provider = llm.provider;
+    const turn = llm.result;
 
     messages.push({
       role: "assistant",
-      content: assistantMessage.content,
-      tool_calls: assistantMessage.tool_calls,
+      content: turn.content,
+      tool_calls: turn.toolCalls.length > 0 ? turn.toolCalls : undefined,
     });
 
-    if (choice.finish_reason === "stop" || !assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
-      return assistantMessage.content ?? "(no response)";
+    const isDone = turn.stopReason === "stop" || turn.stopReason === "end_turn"
+      || turn.toolCalls.length === 0;
+    if (isDone) {
+      return turn.content ?? "(no response)";
     }
 
-    for (const toolCall of assistantMessage.tool_calls) {
+    for (const toolCall of turn.toolCalls) {
       const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
-      process.stderr.write(`  [tool] ${toolCall.function.name}(${JSON.stringify(args)})\n`);
+      process.stderr.write(`  [tool:${provider}] ${toolCall.function.name}(${JSON.stringify(args)})\n`);
       const result = await executeTool(toolCall.function.name, args, rootDir);
       messages.push({
         role: "tool",
@@ -257,23 +521,28 @@ export async function answerQuestion(question: string, rootDir: string, apiKey: 
     }
   }
 
-  const final = await callGroq(messages, apiKey, model);
-  return final.choices[0].message.content ?? "(no response after max rounds)";
+  // Force a final text-only answer — send without tools so the model cannot
+  // request more tool calls and MUST produce a text response.
+  messages.push({
+    role: "user",
+    content: "You have gathered enough information. Now synthesize everything you have learned and provide your final answer. Do not call any more tools.",
+  });
+  const final = await callLLM(messages, true);
+  return final.result.content ?? "(no response after max rounds)";
 }
 
 export async function runAsk(args: string[], rootDir: string): Promise<void> {
-  const apiKey = process.env.GROQ_API_KEY ?? "";
-  if (!apiKey) {
-    process.stderr.write("Error: GROQ_API_KEY environment variable is not set.\n");
+  if (!hasAWSCredentials() && !hasGroqKey()) {
+    process.stderr.write("Error: Neither AWS Bedrock nor GROQ API credentials are set.\n");
     process.exit(1);
   }
 
-  const model = process.env.GROQ_MODEL ?? DEFAULT_MODEL;
+  const provider = hasAWSCredentials() ? `bedrock (${process.env.BEDROCK_MODEL_ID || DEFAULT_BEDROCK_MODEL})` : `groq (${process.env.GROQ_MODEL || DEFAULT_GROQ_MODEL})`;
   const questionArg = args.find((a) => !a.startsWith("--"));
 
   if (questionArg) {
     process.stderr.write(`\nAnalyzing: ${questionArg}\n\n`);
-    const answer = await answerQuestion(questionArg, rootDir, apiKey, model);
+    const answer = await answerQuestion(questionArg, rootDir);
     process.stdout.write(`${answer}\n`);
     return;
   }
@@ -282,7 +551,7 @@ export async function runAsk(args: string[], rootDir: string): Promise<void> {
   const ask = (prompt: string): Promise<string> =>
     new Promise((resolve) => rl.question(prompt, resolve));
 
-  process.stdout.write(`Context+ RAG  |  model: ${model}  |  root: ${rootDir}\n`);
+  process.stdout.write(`Context+ RAG  |  provider: ${provider}  |  root: ${rootDir}\n`);
   process.stdout.write(`Type your question or "exit" to quit.\n\n`);
 
   while (true) {
@@ -291,7 +560,7 @@ export async function runAsk(args: string[], rootDir: string): Promise<void> {
     if (question === "exit" || question === "quit") break;
 
     process.stderr.write("\n");
-    const answer = await answerQuestion(question, rootDir, apiKey, model);
+    const answer = await answerQuestion(question, rootDir);
     process.stdout.write(`\nAssistant: ${answer}\n\n`);
   }
 

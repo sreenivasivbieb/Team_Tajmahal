@@ -1,3 +1,6 @@
+@import '@fontsource/hanken-grotesk/600.css';
+@import '@fontsource/hanken-grotesk/700.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -33,6 +36,14 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+  }
+
+  h1, h2, h3, h4, h5, h6,
+  .font-bold, .font-semibold {
+    font-family: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700;
   }
 }
 
@@ -57,6 +68,12 @@
 }
 .animate-degraded-pulse {
   animation: degradedPulse 0.8s ease-in-out 2;
+}
+
+/* ---- Diagram fade-in animation ---- */
+@keyframes diagramFadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 /* ---- Hide scrollbar utility ---- */

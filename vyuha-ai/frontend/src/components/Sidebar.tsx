@@ -4,16 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { memo, type FC } from 'react';
-import {
-  FolderGit2,
-  Plus,
-  Trash2,
-  Bot,
-  Sparkles,
-  LayoutTemplate,
-  Archive,
-  Loader2,
-} from 'lucide-react';
+import { Icon } from '@iconify/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { RepoEntry } from '../types/workspace';
@@ -35,10 +26,10 @@ interface SidebarProps {
 // ---------------------------------------------------------------------------
 
 const NAV_ITEMS = [
-  { icon: Bot,            label: 'Vyuha Bot',        shortcut: 'B' },
-  { icon: Sparkles,       label: 'AI Presets',        shortcut: 'C' },
-  { icon: LayoutTemplate, label: 'Team Templates',    shortcut: 'T' },
-  { icon: Archive,        label: 'Archive',           shortcut: 'E' },
+  { icon: 'lucide:bot',             label: 'Codrix Bot',       shortcut: 'B' },
+  { icon: 'lucide:sparkles',        label: 'AI Presets',        shortcut: 'C' },
+  { icon: 'lucide:layout-template', label: 'Team Templates',    shortcut: 'T' },
+  { icon: 'lucide:archive',         label: 'Archive',           shortcut: 'E' },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -53,14 +44,12 @@ const Sidebar: FC<SidebarProps> = ({
   onAddRepo,
 }) => {
   return (
-    <aside className="flex h-full w-[240px] flex-col border-r border-gray-800 bg-[#0d1117]">
+    <aside className="relative z-10 flex h-full w-[240px] flex-col rounded-r-2xl border-r border-white/[0.08] bg-white/[0.04] backdrop-blur-xl">
       {/* ── Header ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-4 py-4">
-        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-blue-600 to-violet-600">
-          <span className="text-xs font-bold text-white">V</span>
-        </div>
-        <span className="text-sm font-semibold text-gray-100 tracking-tight">
-          Vyuha AI
+        <img src="/vyuha-logo.png" alt="Codrix.ai" className="h-7 w-7 rounded-md" />
+        <span className="text-sm font-semibold text-gray-100 tracking-tight" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+          Codrix.ai
         </span>
       </div>
 
@@ -75,7 +64,7 @@ const Sidebar: FC<SidebarProps> = ({
               onClick={onAddRepo}
               className="flex h-5 w-5 items-center justify-center rounded text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300"
             >
-              <Plus size={14} />
+              <Icon icon="lucide:plus" width={14} />
             </button>
           </TooltipTrigger>
           <TooltipContent side="right" className="text-xs">
@@ -107,15 +96,16 @@ const Sidebar: FC<SidebarProps> = ({
                     : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
                 }`}
               >
-                <FolderGit2
-                  size={15}
+                <Icon
+                  icon="lucide:folder-git-2"
+                  width={15}
                   className={isActive ? 'text-blue-400' : 'text-gray-500'}
                 />
                 <span className="flex-1 truncate font-medium">{repo.name}</span>
 
                 {/* Status indicator */}
                 {!repo.ready ? (
-                  <Loader2 size={12} className="animate-spin text-amber-400" />
+                  <Icon icon="lucide:loader-2" width={12} className="animate-spin text-amber-400" />
                 ) : (
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                 )}
@@ -128,7 +118,7 @@ const Sidebar: FC<SidebarProps> = ({
                   }}
                   className="ml-auto hidden h-5 w-5 items-center justify-center rounded text-gray-600 transition-colors hover:bg-red-500/20 hover:text-red-400 group-hover:flex"
                 >
-                  <Trash2 size={12} />
+                  <Icon icon="lucide:trash-2" width={12} />
                 </button>
               </div>
             );
@@ -143,7 +133,7 @@ const Sidebar: FC<SidebarProps> = ({
             key={item.label}
             className="flex cursor-default items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] text-gray-500 transition-colors hover:bg-gray-800/50 hover:text-gray-300"
           >
-            <item.icon size={15} />
+            <Icon icon={item.icon} width={15} />
             <span className="flex-1">{item.label}</span>
             <kbd className="text-[10px] text-gray-600">{item.shortcut}</kbd>
           </div>
@@ -154,9 +144,9 @@ const Sidebar: FC<SidebarProps> = ({
       <div className="px-3 pb-3 pt-1">
         <button
           onClick={onAddRepo}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-blue-500"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-white/[0.08] border border-white/[0.1] backdrop-blur-xl px-3 py-2 text-[13px] font-medium text-gray-200 transition-colors hover:bg-white/[0.14] hover:text-white"
         >
-          <Plus size={14} />
+          <Icon icon="lucide:plus" width={14} />
           New Repo
         </button>
       </div>

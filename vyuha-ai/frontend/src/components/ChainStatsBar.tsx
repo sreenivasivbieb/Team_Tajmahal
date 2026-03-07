@@ -23,7 +23,7 @@ const Stat: FC<{ label: string; value: number; accent?: string }> = ({
 );
 
 const ChainStatsBar: FC<ChainStatsBarProps> = ({ stats, rootName, onClose }) => (
-  <div className="flex items-center gap-5 rounded-lg border border-gray-700/50 bg-gray-900/90 backdrop-blur px-4 py-2 shadow-lg">
+  <div className="flex items-center gap-5 rounded-lg border border-white/[0.08] bg-black/30 backdrop-blur-xl px-4 py-2 shadow-lg">
     {/* Root indicator */}
     <div className="flex items-center gap-2 border-r border-gray-700/50 pr-4">
       <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />

@@ -11,6 +11,10 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ['Hanken Grotesk', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['Hanken Grotesk', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -59,6 +63,9 @@ export default {
         shimmer: 'shimmer 1.5s ease-in-out infinite',
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        landingFadeIn: 'landingFadeIn 0.8s ease-out forwards',
+        landingFadeOut: 'landingFadeOut 0.6s ease-in forwards',
+        appFadeIn: 'appFadeIn 0.6s ease-out forwards',
       },
       keyframes: {
         slideInRight: {
@@ -84,6 +91,18 @@ export default {
         "accordion-up": {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
+        },
+        landingFadeIn: {
+          '0%': { opacity: '0', transform: 'scale(0.97)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        landingFadeOut: {
+          '0%': { opacity: '1', transform: 'scale(1)' },
+          '100%': { opacity: '0', transform: 'scale(1.02)' },
+        },
+        appFadeIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
         },
       },
     },

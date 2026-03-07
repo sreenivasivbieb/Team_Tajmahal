@@ -55,6 +55,9 @@ func (s *Server) RegisterRoutes() {
 	s.mux.HandleFunc("POST /api/scan-repo", s.handleScanRepo)
 	s.mux.HandleFunc("POST /api/clone-repo", s.handleCloneRepo)
 	s.mux.HandleFunc("POST /api/rag-query", s.handleRagQuery)
+	s.mux.HandleFunc("POST /api/generate-diagram", s.handleGenerateDiagram)
+	s.mux.HandleFunc("POST /api/context-tree-architecture", s.handleContextTreeArchitecture)
+	s.mux.HandleFunc("POST /api/edit-diagram", s.handleEditDiagram)
 
 	// -- SSE event stream -------------------------------------------------
 	s.mux.HandleFunc("GET /api/events", s.handleSSE)

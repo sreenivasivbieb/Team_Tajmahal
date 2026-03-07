@@ -2,7 +2,7 @@
 // api/client.ts — Typed API client for the contextplus-backed backend
 // ---------------------------------------------------------------------------
 
-import type { CallChainResponse, NodeDetail, QueryDecision, TextResult } from '../types/graph';
+import type { CallChainResponse, DiagramSpec, NodeDetail, QueryDecision, TextResult } from '../types/graph';
 
 const BASE = '/api';
 
@@ -13,7 +13,17 @@ async function requestRaw<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`API ${res.status}: ${body || res.statusText}`);
+    // Try to extract a structured error message from JSON body
+    let message = '';
+    if (body) {
+      try {
+        const parsed = JSON.parse(body);
+        message = parsed?.error?.message || parsed?.message || body;
+      } catch {
+        message = body;
+      }
+    }
+    throw new Error(message || `API ${res.status}: ${res.statusText}`);
   }
   return res.json() as Promise<T>;
 }
@@ -127,5 +137,20 @@ export const api = {
   /** Get overall graph stats. */
   getStats(): Promise<{ total_nodes?: number; total_edges?: number } | null> {
     return request<{ total_nodes?: number; total_edges?: number } | null>('/stats');
+  },
+
+  /** Generate an AI architecture diagram from a natural language prompt. */
+  generateDiagram(prompt: string, repoPath?: string): Promise<DiagramSpec> {
+    return post<DiagramSpec>('/generate-diagram', { prompt, repo_path: repoPath });
+  },
+
+  /** Generate architecture diagram from context tree + user prompt (AI Layer). */
+  contextTreeArchitecture(prompt: string, targetPath?: string): Promise<DiagramSpec> {
+    return post<DiagramSpec>('/context-tree-architecture', { prompt, target_path: targetPath });
+  },
+
+  /** Edit an existing diagram — modifies in-place without regenerating from scratch. */
+  editDiagram(existingSpec: DiagramSpec, editPrompt: string): Promise<DiagramSpec> {
+    return post<DiagramSpec>('/edit-diagram', { existing_spec: existingSpec, edit_prompt: editPrompt });
   },
 };

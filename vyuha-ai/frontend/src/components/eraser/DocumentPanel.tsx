@@ -24,7 +24,7 @@ const DocumentPanel: FC<DocumentPanelProps> = ({
   onContentChange,
   aiAnswer,
 }) => (
-  <div className="flex h-full flex-col bg-[#0b0e14]">
+  <div className="flex h-full flex-col bg-transparent">
     {/* Title */}
     <div className="px-6 pt-6 pb-2">
       <h1 className="text-2xl font-bold text-gray-100">
@@ -43,7 +43,7 @@ const DocumentPanel: FC<DocumentPanelProps> = ({
               AI Analysis
             </span>
           </div>
-          <div className="rounded-lg border border-purple-500/20 bg-purple-950/20 p-4">
+          <div className="rounded-lg border border-dashed border-purple-500/20 bg-purple-950/30 backdrop-blur-2xl p-4">
             <div className="prose prose-invert prose-sm max-w-none
               prose-headings:text-gray-100 prose-headings:font-semibold prose-headings:mt-4 prose-headings:mb-2
               prose-h2:text-base prose-h3:text-sm

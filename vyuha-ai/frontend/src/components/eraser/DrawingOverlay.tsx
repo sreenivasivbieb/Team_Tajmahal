@@ -9,6 +9,7 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -52,6 +53,7 @@ let nextId = 1;
 const DrawingOverlay: FC<DrawingOverlayProps> = ({ activeTool, onToolReset }) => {
   const [shapes, setShapes] = useState<DrawnShape[]>([]);
   const [drawing, setDrawing] = useState<DrawnShape | null>(null);
+  const [deletePopup, setDeletePopup] = useState<{ id: string; x: number; y: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const isPassthrough = PASSTHROUGH_TOOLS.has(activeTool);
@@ -122,10 +124,28 @@ const DrawingOverlay: FC<DrawingOverlayProps> = ({ activeTool, onToolReset }) =>
     onToolReset();
   }, [drawing, onToolReset]);
 
-  // ---- Double-click to delete ───────────────────────────────────
-  const handleDoubleClick = useCallback((shapeId: string) => {
-    setShapes((s) => s.filter((sh) => sh.id !== shapeId));
+  // ---- Double-click to show delete popup ─────────────────────────
+  const handleDoubleClick = useCallback((shapeId: string, cx: number, cy: number) => {
+    setDeletePopup({ id: shapeId, x: cx, y: cy });
   }, []);
+
+  const confirmDelete = useCallback(() => {
+    if (!deletePopup) return;
+    setShapes((s) => s.filter((sh) => sh.id !== deletePopup.id));
+    setDeletePopup(null);
+  }, [deletePopup]);
+
+  const dismissPopup = useCallback(() => setDeletePopup(null), []);
+
+  // Dismiss popup on Escape key
+  useEffect(() => {
+    if (!deletePopup) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDeletePopup(null);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [deletePopup]);
 
   // ---- Render shapes ────────────────────────────────────────────
   const allShapes = useMemo(
@@ -143,7 +163,11 @@ const DrawingOverlay: FC<DrawingOverlayProps> = ({ activeTool, onToolReset }) =>
         pointerEvents: isPassthrough ? 'none' : 'auto',
         cursor: isPassthrough ? 'default' : 'crosshair',
       }}
-      onMouseDown={handleMouseDown}
+      onMouseDown={(e) => {
+        // Dismiss popup if clicking on empty canvas area
+        if (deletePopup) { dismissPopup(); return; }
+        handleMouseDown(e);
+      }}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
     >
@@ -155,6 +179,45 @@ const DrawingOverlay: FC<DrawingOverlayProps> = ({ activeTool, onToolReset }) =>
           onDoubleClick={handleDoubleClick}
         />
       ))}
+
+      {/* ── Animated delete popup ─────────────────────────── */}
+      {deletePopup && (
+        <foreignObject
+          x={deletePopup.x - 52}
+          y={deletePopup.y - 44}
+          width={104}
+          height={40}
+          style={{ overflow: 'visible' }}
+        >
+          <div
+            className="flex items-center justify-center"
+            style={{
+              animation: 'deletePopIn 0.2s cubic-bezier(0.34,1.56,0.64,1) forwards',
+            }}
+          >
+            <button
+              onClick={(e) => { e.stopPropagation(); confirmDelete(); }}
+              className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-950/80 px-3 py-1.5 text-xs font-medium text-red-300 shadow-lg shadow-red-900/30 backdrop-blur-xl transition-colors hover:bg-red-900/90 hover:text-red-200"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+              </svg>
+              Delete
+            </button>
+          </div>
+        </foreignObject>
+      )}
+
+      {/* Keyframe animation for the popup */}
+      <defs>
+        <style>{`
+          @keyframes deletePopIn {
+            0% { opacity: 0; transform: scale(0.5) translateY(6px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+          }
+        `}</style>
+      </defs>
     </svg>
   );
 };
@@ -166,7 +229,7 @@ const DrawingOverlay: FC<DrawingOverlayProps> = ({ activeTool, onToolReset }) =>
 interface ShapeElementProps {
   shape: DrawnShape;
   isPreview: boolean;
-  onDoubleClick: (id: string) => void;
+  onDoubleClick: (id: string, cx: number, cy: number) => void;
 }
 
 const ShapeElement: FC<ShapeElementProps> = ({ shape, isPreview, onDoubleClick }) => {
@@ -185,7 +248,7 @@ const ShapeElement: FC<ShapeElementProps> = ({ shape, isPreview, onDoubleClick }
     opacity,
     onDoubleClick: (e: ReactMouseEvent) => {
       e.stopPropagation();
-      onDoubleClick(id);
+      onDoubleClick(id, nx + nw / 2, ny - 4);
     },
     style: { cursor: 'pointer' } as React.CSSProperties,
   };

@@ -78,17 +78,20 @@ export interface QueryDecision {
 export interface FlatNode {
   id: string;
   name: string;
-  file: string;
-  line: number;
-  end_line: number;
-  signature: string;
-  is_external: boolean;
+  type?: string;
+  file_path: string;
+  line?: number;
+  end_line?: number;
+  signature?: string;
+  annotations?: string[];
+  metadata?: Record<string, string>;
 }
 
 export interface FlatEdge {
   id: string;
-  source: string;
-  target: string;
+  source_id: string;
+  target_id: string;
+  type?: string;
 }
 
 export interface ChainStats {
@@ -143,6 +146,37 @@ export interface ToolInfo {
   label: string;
   placeholder: string;
   requiresInput: boolean;
+}
+
+// ---- AI Diagram types ---------------------------------------------------
+
+export interface DiagramGroup {
+  id: string;
+  label: string;
+  color: string;
+  borderColor?: string;
+}
+
+export interface DiagramNode {
+  id: string;
+  label: string;
+  icon: string;
+  group?: string | null;
+}
+
+export interface DiagramEdge {
+  source: string;
+  target: string;
+  label?: string;
+  style?: string;
+  animated?: boolean;
+}
+
+export interface DiagramSpec {
+  title: string;
+  groups: DiagramGroup[];
+  nodes: DiagramNode[];
+  edges: DiagramEdge[];
 }
 
 export const TOOLS: ToolInfo[] = [

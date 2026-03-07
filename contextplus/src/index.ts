@@ -409,25 +409,25 @@ server.tool(
 server.tool(
   "ask_question",
   "Agentic RAG — ask a natural-language question about the codebase and get a synthesised answer. " +
-  "Internally the tool uses Groq LLM with automatic tool-calling (context tree, skeleton, search, " +
+  "Uses AWS Bedrock (primary) or Groq (fallback) with automatic tool-calling (context tree, skeleton, search, " +
   "blast radius, call chain) to gather relevant code context and produce a human-readable answer.",
   {
     question: z.string().describe("The natural-language question about the codebase."),
     root_dir: z.string().optional().describe("Override root directory for the RAG session. Targets a specific cloned repo instead of the global root."),
   },
   async ({ question, root_dir }) => {
-    const apiKey = process.env.GROQ_API_KEY ?? "";
-    if (!apiKey) {
+    const awsOK = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+    const groqOK = !!process.env.GROQ_API_KEY;
+    if (!awsOK && !groqOK) {
       return {
         content: [{
           type: "text" as const,
-          text: "Error: GROQ_API_KEY environment variable is not set. Set it to use the ask_question tool.",
+          text: "Configuration Error: Neither AWS Bedrock nor GROQ API credentials were found. Set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY or GROQ_API_KEY.",
         }],
       };
     }
-    const model = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
     const effectiveRoot = root_dir ? resolve(root_dir) : ROOT_DIR;
-    const answer = await answerQuestion(question, effectiveRoot, apiKey, model);
+    const answer = await answerQuestion(question, effectiveRoot);
     return {
       content: [{
         type: "text" as const,

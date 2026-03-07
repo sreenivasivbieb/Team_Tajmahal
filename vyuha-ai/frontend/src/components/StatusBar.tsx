@@ -17,7 +17,7 @@ const StatusBar: FC<StatusBarProps> = ({ nodeCount, edgeCount, isConnected, tool
   const latestTool = running.length > 0 ? running[running.length - 1] : undefined;
 
   return (
-    <div className="flex h-7 items-center gap-3 border-t border-gray-800 bg-gray-900 px-3 text-[11px] text-gray-500">
+    <div className="flex h-7 items-center gap-3 rounded-tr-2xl border-t border-white/[0.08] bg-black/40 backdrop-blur-2xl px-3 text-[11px] text-gray-500">
       {/* SSE connection indicator */}
       <div className="flex items-center gap-1.5">
         <span
