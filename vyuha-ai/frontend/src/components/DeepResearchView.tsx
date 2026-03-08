@@ -703,13 +703,21 @@ const DeepResearchViewInner: FC<DeepResearchViewProps> = ({
             {/* Architecture diagram — uses ReactFlow with arch nodes */}
             {activeDiagram === 'architecture' && rfNodes.length > 0 && (
               <div key={diagramKey} className="h-full w-full" style={{ animation: 'diagramFadeIn 0.5s ease-out' }}>
+                {highlightEdgeId && (
+                  <button
+                    onClick={() => setHighlightEdgeId(null)}
+                    className="absolute top-3 right-3 z-50 flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-gray-900/80 px-3 py-1.5 text-xs font-medium text-gray-300 backdrop-blur-xl transition-colors hover:bg-gray-800 hover:text-white"
+                  >
+                    <Icon icon="lucide:x" width={12} />
+                    Clear highlight
+                  </button>
+                )}
                 <ReactFlow
                   nodes={styledNodes}
                   edges={styledEdges}
                   onNodesChange={handleNodesChange}
                   onEdgesChange={onEdgesChange}
                   onEdgeClick={handleEdgeClick}
-                  onPaneClick={() => setHighlightEdgeId(null)}
                   nodeTypes={nodeTypes}
                   fitView
                   minZoom={0.05}
