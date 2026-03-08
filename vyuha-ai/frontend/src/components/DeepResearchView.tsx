@@ -741,16 +741,32 @@ const DeepResearchViewInner: FC<DeepResearchViewProps> = ({
 
             {/* Sequence diagram — dedicated renderer */}
             {activeDiagram === 'sequence' && sequenceSpec && (
-              <ReactFlowProvider>
-                <SequenceDiagramRenderer spec={sequenceSpec} diagramKey={diagramKey} />
-              </ReactFlowProvider>
+              <div className="flex h-full w-full flex-col rounded-xl border border-white/[0.06] bg-white/[0.02]">
+                <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-2.5">
+                  <Icon icon="lucide:arrow-down-up" width={14} className="text-purple-400" />
+                  <span className="text-sm font-semibold text-gray-200">{sequenceSpec.title || 'Sequence Diagram'}</span>
+                </div>
+                <div className="flex-1 min-h-0">
+                  <ReactFlowProvider>
+                    <SequenceDiagramRenderer spec={sequenceSpec} diagramKey={diagramKey} />
+                  </ReactFlowProvider>
+                </div>
+              </div>
             )}
 
             {/* E-R diagram — dedicated renderer */}
             {activeDiagram === 'er' && erSpec && (
-              <ReactFlowProvider>
-                <ERDiagramRenderer spec={erSpec} diagramKey={diagramKey} />
-              </ReactFlowProvider>
+              <div className="flex h-full w-full flex-col rounded-xl border border-white/[0.06] bg-white/[0.02]">
+                <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-2.5">
+                  <Icon icon="lucide:database" width={14} className="text-purple-400" />
+                  <span className="text-sm font-semibold text-gray-200">{erSpec.title || 'Entity-Relationship Diagram'}</span>
+                </div>
+                <div className="flex-1 min-h-0">
+                  <ReactFlowProvider>
+                    <ERDiagramRenderer spec={erSpec} diagramKey={diagramKey} />
+                  </ReactFlowProvider>
+                </div>
+              </div>
             )}
 
             {/* Fallback: no diagram */}
