@@ -4,7 +4,7 @@
 
 import type { CallChainResponse, DiagramSpec, SequenceDiagramSpec, ERDiagramSpec, TextResult } from '../types/graph';
 
-const BASE = '/api';
+const BASE = (import.meta.env.VITE_API_URL || '') + '/api';
 
 async function requestRaw<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {

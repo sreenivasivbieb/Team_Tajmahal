@@ -127,13 +127,44 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 // Middleware
 // ---------------------------------------------------------------------------
 
+// allowedOrigins returns the set of allowed CORS origins.
+// Reads CORS_ORIGINS env var (comma-separated); falls back to permissive "*".
+func allowedOrigins() map[string]bool {
+	raw := os.Getenv("CORS_ORIGINS")
+	if raw == "" {
+		return nil // nil means allow all
+	}
+	m := make(map[string]bool)
+	for _, o := range strings.Split(raw, ",") {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			m[o] = true
+		}
+	}
+	return m
+}
+
 func corsMiddleware(next http.Handler) http.Handler {
+	origins := allowedOrigins()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin == "" {
-			origin = "*"
+		if origins == nil {
+			// No allowlist configured — reflect origin (dev mode)
+			if origin == "" {
+				origin = "*"
+			}
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		} else if origins[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		} else {
+			// Origin not allowed — still serve the request but without CORS header
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
 		}
-		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")

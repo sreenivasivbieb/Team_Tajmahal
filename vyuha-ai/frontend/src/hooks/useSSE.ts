@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SSEEvent } from '../types/graph';
 
-const SSE_URL = '/api/events';
+const SSE_URL = (import.meta.env.VITE_API_URL || '') + '/api/events';
 const MAX_BACKOFF_MS = 30_000;
 
 export interface ToolProgress {

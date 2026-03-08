@@ -1,0 +1,33 @@
+# ---------- Go Build Stage ----------
+FROM golang:1.22-alpine AS builder
+
+RUN apk add --no-cache gcc musl-dev git
+
+WORKDIR /src
+COPY go.mod go.sum* ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o /bin/vyuha-ai ./cmd/server
+
+# ---------- Runtime Stage ----------
+FROM node:20-alpine
+
+RUN apk add --no-cache ca-certificates git
+
+WORKDIR /app
+
+# Copy the Go binary
+COPY --from=builder /bin/vyuha-ai .
+
+# Copy contextplus (Node.js MCP server)
+COPY contextplus/ ./contextplus/
+
+# Install contextplus dependencies (production only)
+WORKDIR /app/contextplus
+RUN npm ci --omit=dev --ignore-scripts 2>/dev/null || true
+WORKDIR /app
+
+EXPOSE 8080
+
+ENTRYPOINT ["./vyuha-ai", "--contextplus", "/app/contextplus/build/index.js", "--port", "8080"]

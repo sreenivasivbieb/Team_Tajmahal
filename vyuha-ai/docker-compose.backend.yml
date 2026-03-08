@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  vyuha-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - vyuha-repos:/app/_vyuha_repos
+    environment:
+      - VYUHA_PORT=8080
+      - VYUHA_ROOT_DIR=/app/_vyuha_repos
+      - DEEP_RESEARCH_BASE_URL=http://107.21.71.139:8000/api/v1
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+      # AWS credentials for Bedrock (set these in .env or pass at runtime)
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  vyuha-repos:
