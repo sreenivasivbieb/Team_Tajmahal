@@ -160,6 +160,37 @@ vyuha-ai/
 ├── docker-compose.yml
 ├── Dockerfile
 └── go.mod
+
+contextplus/                         # MCP Code-Intelligence Server (Node.js)
+├── src/
+│   ├── index.ts                     # MCP server entry point
+│   ├── core/
+│   │   ├── parser.ts                # Multi-language AST parser
+│   │   ├── tree-sitter.ts           # Tree-sitter WASM integration
+│   │   ├── walker.ts                # File-system walker & indexer
+│   │   ├── hub.ts                   # Central tool registry / dispatcher
+│   │   ├── embeddings.ts            # Vector embedding generation
+│   │   ├── embedding-tracker.ts     # Embedding cache & tracking
+│   │   ├── clustering.ts            # Symbol clustering algorithms
+│   │   └── process-lifecycle.ts     # Graceful startup / shutdown
+│   ├── tools/
+│   │   ├── blast-radius.ts          # Blast-radius analysis
+│   │   ├── call-chain.ts            # Caller / callee chain tracing
+│   │   ├── context-tree.ts          # Hierarchical context tree
+│   │   ├── feature-hub.ts           # Feature-level grouping
+│   │   ├── file-skeleton.ts         # File structural outline
+│   │   ├── propose-commit.ts        # AI commit-message proposal
+│   │   ├── semantic-identifiers.ts  # Identifier search
+│   │   ├── semantic-navigate.ts     # Semantic go-to-definition
+│   │   ├── semantic-search.ts       # Natural-language code search
+│   │   └── static-analysis.ts       # Static code analysis
+│   ├── agent/
+│   │   └── rag.ts                   # RAG pipeline (retrieval + LLM)
+│   └── git/
+│       └── shadow.ts                # Git shadow-copy utilities
+├── build/                           # Compiled JS output
+├── package.json
+└── tsconfig.json
 ```
 
 ---
