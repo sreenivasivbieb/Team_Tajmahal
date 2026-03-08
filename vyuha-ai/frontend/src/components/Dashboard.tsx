@@ -295,7 +295,9 @@ const Dashboard: FC<DashboardProps> = ({
                 {/* Name */}
                 <span className="flex-[2] truncate text-[13px] font-medium text-gray-200 flex items-center gap-2">
                   {d.deepResearch && (
-                    <Icon icon="lucide:scan-search" width={14} className="shrink-0 text-purple-400" title="Deep Research" />
+                    <span title="Deep Research">
+                      <Icon icon="lucide:scan-search" width={14} className="shrink-0 text-purple-400" />
+                    </span>
                   )}
                   {d.name}
                 </span>
