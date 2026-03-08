@@ -2,7 +2,7 @@
 // components/RepoSelectDialog.tsx — Popup to select a scanned repo or add new
 // ---------------------------------------------------------------------------
 
-import { useState, useMemo, type FC, type FormEvent, useCallback } from 'react';
+import { useState, useMemo, type FC, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -166,7 +166,7 @@ const RepoSelectDialog: FC<RepoSelectDialogProps> = ({
               </div>
               <div className="flex items-center gap-1.5">
                 <Icon icon="lucide:scan-search" width={16} className="text-purple-400" />
-                <AuroraText className="text-sm font-semibold">Deep Research</AuroraText>
+                <AuroraText className="text-base font-bold">Deep Research</AuroraText>
               </div>
               <span className="ml-auto text-[10px] text-gray-600">5–20 min</span>
             </button>

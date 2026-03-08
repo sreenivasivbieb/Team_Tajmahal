@@ -12,7 +12,6 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { Icon } from '@iconify/react';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api } from '../api/client';

@@ -258,21 +258,6 @@ func nodeID(file, name string, line int) string {
 }
 
 // ---------------------------------------------------------------------------
-// Tool: get_call_chain (text mode — for display / RAG answer)
-// ---------------------------------------------------------------------------
-
-// GetCallChainText invokes contextplus get_call_chain in text mode.
-func (c *MCPClient) GetCallChainText(symbolName, filePath string) (string, error) {
-	args := map[string]interface{}{
-		"symbol_name": symbolName,
-	}
-	if filePath != "" {
-		args["file_path"] = filePath
-	}
-	return c.CallTool("get_call_chain", args)
-}
-
-// ---------------------------------------------------------------------------
 // Tool: semantic_code_search
 // ---------------------------------------------------------------------------
 

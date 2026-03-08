@@ -214,15 +214,6 @@ func (c *MCPClient) CallTool(toolName string, args map[string]interface{}) (stri
 	return result.Content[0].Text, nil
 }
 
-// Close terminates the contextplus child process.
-func (c *MCPClient) Close() error {
-	c.stdin.Close()
-	if c.cmd.Process != nil {
-		_ = c.cmd.Process.Signal(os.Interrupt)
-	}
-	return c.cmd.Wait()
-}
-
 // sendRequest writes a JSON-RPC request as a single line to stdin.
 func (c *MCPClient) sendRequest(req jsonRPCRequest) error {
 	data, err := json.Marshal(req)

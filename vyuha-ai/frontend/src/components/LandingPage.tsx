@@ -47,7 +47,7 @@ const LandingPage: FC<LandingPageProps> = ({ onEnter }) => {
             alt="Codrix.ai"
             className="h-20 w-20 rounded-2xl object-cover"
           />
-          <h1 className="text-6xl font-bold tracking-tight text-white" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+          <h1 className="text-7xl font-extrabold tracking-tight text-white" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
             Codrix.ai
           </h1>
         </div>

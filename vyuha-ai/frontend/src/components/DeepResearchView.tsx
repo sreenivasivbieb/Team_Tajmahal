@@ -392,7 +392,7 @@ const DeepResearchViewInner: FC<DeepResearchViewProps> = ({
               <Icon icon="lucide:scan-search" width={16} className="text-white" />
             </div>
             <div>
-              <h1 className="text-sm font-bold text-gray-100 tracking-wide">
+              <h1 className="text-base font-extrabold text-gray-100 tracking-wide">
                 <AuroraText>Deep Research</AuroraText>
               </h1>
               <span className="text-[11px] text-gray-500">
@@ -415,8 +415,8 @@ const DeepResearchViewInner: FC<DeepResearchViewProps> = ({
 
             {/* Title */}
             <div className="text-center">
-              <h2 className="text-xl font-semibold text-gray-200">
-                <AuroraText>Deep Research Mode</AuroraText>
+              <h2 className="text-2xl font-bold text-gray-200">
+                <AuroraText>Deep Research</AuroraText>
               </h2>
               <p className="mt-3 max-w-md text-sm text-gray-400 leading-relaxed">
                 This will perform an in-depth analysis of{' '}
@@ -533,7 +533,7 @@ const DeepResearchViewInner: FC<DeepResearchViewProps> = ({
 
             {/* Status text */}
             <div className="text-center">
-              <h2 className="text-lg font-semibold text-gray-200">
+              <h2 className="text-xl font-bold text-gray-200">
                 Deep Research in Progress
               </h2>
               <p className="mt-2 text-sm text-gray-500">
@@ -608,7 +608,7 @@ const DeepResearchViewInner: FC<DeepResearchViewProps> = ({
             <div className="flex h-5 w-5 items-center justify-center rounded bg-gradient-to-br from-purple-600 to-cyan-600">
               <Icon icon="lucide:scan-search" width={10} className="text-white" />
             </div>
-            <span className="text-sm font-medium text-gray-200">
+            <span className="text-base font-semibold text-gray-200">
               <AuroraText>Deep Research</AuroraText>
               <span className="ml-2 text-gray-500">— {repoName}</span>
             </span>

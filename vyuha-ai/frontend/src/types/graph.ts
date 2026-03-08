@@ -23,56 +23,6 @@ export interface GraphNode {
   metadata?: Record<string, any>;
 }
 
-// ---- Node Detail (expanded info from getNode) -----------------------------
-
-export interface NodeDetail {
-  node: GraphNode;
-  callers?: GraphNode[];
-  callees?: GraphNode[];
-  cloud_deps?: GraphNode[];
-  implements?: GraphNode[];
-  produces_to?: GraphNode[];
-  data_flow?: Array<{
-    kind: string;
-    type_name: string;
-    source?: string;
-    sink?: string;
-  }>;
-  recent_events?: RuntimeEvent[];
-}
-
-// ---- Runtime Event --------------------------------------------------------
-
-export interface RuntimeEvent {
-  timestamp: string;
-  status: string;
-  event_type: string;
-  latency_ms: number;
-  error_message?: string;
-}
-
-// ---- Agent types ----------------------------------------------------------
-
-export interface AgentStep {
-  step: number;
-  reasoning?: string;
-  tool_calls?: Array<{ name: string; arguments?: string }>;
-  results?: string[];
-}
-
-export interface AgentRun {
-  answer: string;
-  steps: AgentStep[];
-  duration_ms: number;
-}
-
-export interface QueryDecision {
-  answer?: string;
-  tool?: string;
-  confidence?: number;
-  agent_run?: AgentRun;
-}
-
 // ---- Call Chain types (match Go bridge.FlatNode / FlatEdge) ---------------
 
 export interface FlatNode {

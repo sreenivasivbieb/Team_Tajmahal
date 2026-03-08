@@ -2,7 +2,6 @@
 // hooks/useGraphLayout.ts — ELK layout computation + tree layout for call chains
 // ---------------------------------------------------------------------------
 
-import { useCallback, useRef } from 'react';
 import type { Node as ReactFlowNode, Edge as ReactFlowEdge } from 'reactflow';
 import ELK from 'elkjs/lib/elk.bundled.js';
 import type { ElkNode } from 'elkjs';
@@ -216,41 +215,3 @@ export const applyTreeLayout = async (
     return { nodes: layoutedNodes, edges };
   }
 };
-
-// ---------------------------------------------------------------------------
-// Hook: provides memoized async layout computation with caching
-// ---------------------------------------------------------------------------
-
-export function useGraphLayout() {
-  const cacheRef = useRef<{
-    nodeIds: string;
-    edgeIds: string;
-    result: ReactFlowNode[];
-  } | null>(null);
-
-  const computeLayout = useCallback(
-    async (
-      nodes: ReactFlowNode[],
-      edges: ReactFlowEdge[],
-      direction: 'TB' | 'LR' = 'TB',
-    ): Promise<ReactFlowNode[]> => {
-      const nodeIds = nodes.map((n) => n.id).sort().join(',');
-      const edgeIds = edges.map((e) => `${e.source}-${e.target}`).sort().join(',');
-
-      if (
-        cacheRef.current &&
-        cacheRef.current.nodeIds === nodeIds &&
-        cacheRef.current.edgeIds === edgeIds
-      ) {
-        return cacheRef.current.result;
-      }
-
-      const { nodes: result } = await applyElkLayout(nodes, edges, { direction });
-      cacheRef.current = { nodeIds, edgeIds, result };
-      return result;
-    },
-    [],
-  );
-
-  return { computeLayout, applyElkLayout };
-}

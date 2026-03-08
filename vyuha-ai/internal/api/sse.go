@@ -75,13 +75,6 @@ func (b *SSEBroadcaster) Broadcast(event SSEEvent) {
 	}
 }
 
-// ClientCount returns the number of connected clients.
-func (b *SSEBroadcaster) ClientCount() int {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	return len(b.clients)
-}
-
 // ---------------------------------------------------------------------------
 // HTTP handler — GET /api/events
 // ---------------------------------------------------------------------------

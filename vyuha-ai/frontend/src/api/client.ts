@@ -2,7 +2,7 @@
 // api/client.ts — Typed API client for the contextplus-backed backend
 // ---------------------------------------------------------------------------
 
-import type { CallChainResponse, DiagramSpec, SequenceDiagramSpec, ERDiagramSpec, NodeDetail, QueryDecision, TextResult } from '../types/graph';
+import type { CallChainResponse, DiagramSpec, SequenceDiagramSpec, ERDiagramSpec, TextResult } from '../types/graph';
 
 const BASE = '/api';
 
@@ -107,36 +107,6 @@ export const api = {
    *  directory so tools only access the already-built context tree / index. */
   ragQuery(question: string, repoPath?: string): Promise<{ answer: string }> {
     return post('/rag-query', { question, repo_path: repoPath });
-  },
-
-  /** Get expanded detail for a single node by ID. */
-  getNode(nodeId: string): Promise<NodeDetail> {
-    return post<NodeDetail>('/node', { node_id: nodeId });
-  },
-
-  /** Ask the agent a question about the codebase. */
-  askQuestion(question: string): Promise<QueryDecision> {
-    return post<QueryDecision>('/ask', { question });
-  },
-
-  /** Get the current status of a scan job. */
-  getScanStatus(jobId: string): Promise<{ status: string; error?: string } | null> {
-    return request<{ status: string; error?: string } | null>(`/scan-status/${jobId}`);
-  },
-
-  /** Start a full scan of the given root path. */
-  scan(rootPath: string): Promise<{ job_id?: string }> {
-    return post<{ job_id?: string }>('/scan', { root_path: rootPath });
-  },
-
-  /** Load built-in demo data. */
-  loadDemo(): Promise<void> {
-    return post<void>('/load-demo', {});
-  },
-
-  /** Get overall graph stats. */
-  getStats(): Promise<{ total_nodes?: number; total_edges?: number } | null> {
-    return request<{ total_nodes?: number; total_edges?: number } | null>('/stats');
   },
 
   /** Generate an AI architecture diagram from a natural language prompt. */

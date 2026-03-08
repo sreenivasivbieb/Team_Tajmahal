@@ -63,7 +63,7 @@ const GraphCanvas: FC<GraphCanvasProps> = ({ graph, sse }) => {
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 shadow-lg shadow-blue-500/20">
             <span className="text-2xl font-bold tracking-tight text-white" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>C</span>
           </div>
-          <h2 className="text-lg font-semibold text-gray-200" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>Codrix.ai</h2>
+          <h2 className="text-xl font-bold text-gray-200" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>Codrix.ai</h2>
           <p className="text-sm text-gray-500">
             Select a tool above and enter a query to explore your codebase
           </p>

@@ -48,7 +48,7 @@ const Sidebar: FC<SidebarProps> = ({
       {/* ── Header ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-4 py-4">
         <img src="/vyuha-logo.png" alt="Codrix.ai" className="h-7 w-7 rounded-md" />
-        <span className="text-sm font-semibold text-gray-100 tracking-tight" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+        <span className="text-base font-bold text-gray-100 tracking-tight" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
           Codrix.ai
         </span>
       </div>

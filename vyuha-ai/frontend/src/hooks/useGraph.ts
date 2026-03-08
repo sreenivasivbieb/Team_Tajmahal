@@ -7,9 +7,6 @@ import type { Node as ReactFlowNode, Edge as ReactFlowEdge } from 'reactflow';
 import type { CallChainMeta, CanvasMode, FlatEdge, FlatNode } from '../types/graph';
 import { applyTreeLayout } from './useGraphLayout';
 
-// Re-export layout for external consumers
-export { applyElkLayout, applyTreeLayout } from './useGraphLayout';
-
 // ---------------------------------------------------------------------------
 // Convert FlatNode to a CallChainNode ReactFlow node
 // ---------------------------------------------------------------------------
@@ -63,8 +60,6 @@ export interface UseGraphReturn {
   clearAll: () => void;
   /** Restore a previously saved snapshot of nodes + edges. */
   restoreSnapshot: (nodes: ReactFlowNode[], edges: ReactFlowEdge[]) => void;
-  /** Placeholder — load services graph from the backend. Currently a no-op. */
-  loadServices: () => void;
   isLoading: boolean;
   error: string | null;
   setError: (e: string | null) => void;
@@ -163,12 +158,6 @@ export function useGraph(): UseGraphReturn {
     [],
   );
 
-  // ---- Load services (placeholder for service-graph mode) ------------------
-  const loadServices = useCallback(() => {
-    // No-op: service graph loading is not yet implemented.
-    // ScanContext calls this after a successful scan to refresh the view.
-  }, []);
-
   return {
     nodes: rfNodes,
     edges: rfEdges,
@@ -182,7 +171,6 @@ export function useGraph(): UseGraphReturn {
     exitCallChain,
     clearAll,
     restoreSnapshot,
-    loadServices,
     isLoading,
     error,
     setError,
