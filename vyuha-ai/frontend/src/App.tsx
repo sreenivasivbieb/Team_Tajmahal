@@ -18,6 +18,7 @@ import StatusBar from './components/StatusBar';
 import Beams from './components/Beams';
 import LandingPage from './components/LandingPage';
 import AIDiagramView from './components/AIDiagramView';
+import DeepResearchView from './components/DeepResearchView';
 
 import { useWorkspace } from './hooks/useWorkspace';
 import { useGraph } from './hooks/useGraph';
@@ -28,7 +29,7 @@ import { api } from './api/client';
 // View mode
 // ---------------------------------------------------------------------------
 
-type ViewMode = 'dashboard' | 'editor' | 'chatcode' | 'ai-diagram';
+type ViewMode = 'dashboard' | 'editor' | 'chatcode' | 'ai-diagram' | 'deep-research';
 
 // ---------------------------------------------------------------------------
 // Root App — combines sidebar + main panel
@@ -61,7 +62,12 @@ const App: FC = () => {
   const [aiDiagramRepoSelectOpen, setAiDiagramRepoSelectOpen] = useState(false);
   const [aiDiagramRepoPath, setAiDiagramRepoPath] = useState('');
   const [aiDiagramRepoName, setAiDiagramRepoName] = useState('');
-  const [isScanning, setIsScanning] = useState(false);
+  const [blankFileRepoSelectOpen, setBlankFileRepoSelectOpen] = useState(false);
+  const [deepResearchEnabled, setDeepResearchEnabled] = useState(false);
+  const [deepResearchRepoPath, setDeepResearchRepoPath] = useState('');
+  const [deepResearchRepoName, setDeepResearchRepoName] = useState('');
+  const [deepResearchGithubUrl, setDeepResearchGithubUrl] = useState('');
+  const [savedDeepResearchData, setSavedDeepResearchData] = useState<import('./types/workspace').SavedDiagram['deepResearchData'] | null>(null);  const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanSuccess, setScanSuccess] = useState<string | null>(null);
 
@@ -88,7 +94,7 @@ const App: FC = () => {
         if (result.source === 'github') {
           // Clone from GitHub → backend handles git clone + scan
           const data = await api.cloneRepo(result.path);
-          const entry = workspace.addRepo(data.name || result.name, data.local_path);
+          const entry = workspace.addRepo(data.name || result.name, data.local_path, result.path);
           workspace.markRepoReady(entry.id, data.symbol_count);
           setScanSuccess(`Repository "${data.name || result.name}" cloned & scanned — ${data.symbol_count ?? 0} symbols indexed`);
         } else {
@@ -123,8 +129,22 @@ const App: FC = () => {
   const handleOpenDiagram = useCallback(
     (diagramId: string) => {
       const diagram = workspace.diagrams.find((d) => d.id === diagramId);
-      if (diagram?.nodes && diagram?.edges) {
-        // Restore the saved graph state
+      if (!diagram) return;
+
+      // Deep Research entries re-open in the DeepResearchView
+      if (diagram.deepResearch && diagram.deepResearchData) {
+        const repo = workspace.repos.find((r) => r.id === diagram.repoId);
+        setDeepResearchRepoPath(repo?.path ?? '');
+        setDeepResearchRepoName(repo?.name ?? diagram.name);
+        setDeepResearchGithubUrl(repo?.githubUrl ?? '');
+        setSavedDeepResearchData(diagram.deepResearchData);
+        workspace.setActiveDiagram(diagramId);
+        workspace.touchDiagram(diagramId);
+        transitionTo('deep-research');
+        return;
+      }
+
+      if (diagram.nodes && diagram.edges) {
         const nodes = diagram.nodes as RFNode[];
         const edges = diagram.edges as RFEdge[];
         graph.restoreSnapshot(nodes, edges);
@@ -138,8 +158,33 @@ const App: FC = () => {
     [workspace, graph, transitionTo],
   );
 
-  // ---- New blank diagram → editor view -----------------------------------
+  // ---- New blank diagram → open repo selector with deep research option ----
   const handleNewBlank = useCallback(() => {
+    setDeepResearchEnabled(false);
+    setBlankFileRepoSelectOpen(true);
+  }, []);
+
+  // ---- Blank file: repo selected (with or without deep research) ----------
+  const handleBlankRepoSelected = useCallback(
+    (repo: import('./types/workspace').RepoEntry) => {
+      setBlankFileRepoSelectOpen(false);
+      if (deepResearchEnabled) {
+        setDeepResearchRepoPath(repo.path);
+        setDeepResearchRepoName(repo.name);
+        setDeepResearchGithubUrl(repo.githubUrl || '');
+        setSavedDeepResearchData(null);
+        transitionTo('deep-research');
+      } else {
+        graph.clearAll();
+        transitionTo('editor');
+      }
+    },
+    [deepResearchEnabled, graph, transitionTo],
+  );
+
+  // ---- Blank file: skip repo (no deep research) --------------------------
+  const handleBlankSkipRepo = useCallback(() => {
+    setBlankFileRepoSelectOpen(false);
     graph.clearAll();
     transitionTo('editor');
   }, [graph, transitionTo]);
@@ -278,6 +323,40 @@ const App: FC = () => {
                 repoPath={workspace.activeRepo?.path ?? ''}
                 onBack={() => transitionTo('dashboard')}
               />
+            ) : view === 'deep-research' ? (
+              <DeepResearchView
+                repoName={deepResearchRepoName || 'Repository'}
+                repoPath={deepResearchRepoPath}
+                githubUrl={deepResearchGithubUrl}
+                initialData={savedDeepResearchData ?? undefined}
+                onBack={() => transitionTo('dashboard')}
+                onSaveResearch={(data) => {
+                  const repoId = workspace.repos.find(r => r.path === deepResearchRepoPath)?.id;
+                  if (repoId) {
+                    workspace.saveDiagram(
+                      repoId,
+                      `Deep Research — ${deepResearchRepoName || 'Repository'}`,
+                      'deep-research',
+                      `Deep Research analysis of ${deepResearchRepoName}`,
+                      data.archNodes,
+                      data.archEdges,
+                      true,
+                      {
+                        report: data.report,
+                        sequenceSpec: data.sequenceSpec,
+                        erSpec: data.erSpec,
+                        archSpec: data.archSpec,
+                      },
+                    );
+                  }
+                }}
+                onExportSave={(tool, query, nodes, edges) => {
+                  const repoId = workspace.repos.find(r => r.path === deepResearchRepoPath)?.id;
+                  if (repoId) {
+                    workspace.saveDiagram(repoId, deepResearchRepoName || 'Deep Research', tool, query, nodes, edges, true);
+                  }
+                }}
+              />
             ) : (
               <AIDiagramView
                 repoName={aiDiagramRepoName || 'No Repository'}
@@ -342,6 +421,27 @@ const App: FC = () => {
             iconColor="text-purple-400"
             onSkipRepo={handleAiDiagramSkipRepo}
             skipLabel="Generate without repository"
+          />
+
+          {/* ── Repo select dialog for Blank File (with Deep Research) ── */}
+          <RepoSelectDialog
+            open={blankFileRepoSelectOpen}
+            onClose={() => setBlankFileRepoSelectOpen(false)}
+            repos={workspace.repos.filter((r) => r.ready)}
+            onSelectRepo={handleBlankRepoSelected}
+            onAddRepo={() => {
+              setBlankFileRepoSelectOpen(false);
+              setAddRepoOpen(true);
+            }}
+            title="Create a Blank File"
+            description="Select a repository for context, or start with a blank canvas."
+            icon="lucide:plus"
+            iconColor="text-blue-400"
+            onSkipRepo={handleBlankSkipRepo}
+            skipLabel="Start without repository"
+            showDeepResearch
+            deepResearchChecked={deepResearchEnabled}
+            onDeepResearchChange={setDeepResearchEnabled}
           />
         </div>
     </TooltipProvider>

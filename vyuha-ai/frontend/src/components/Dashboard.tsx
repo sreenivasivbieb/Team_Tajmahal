@@ -282,9 +282,7 @@ const Dashboard: FC<DashboardProps> = ({
           </div>
         ) : (
           <div className="flex flex-col">
-            {repoDiagrams.map((d) => {
-              const repoName = repos.find((r) => r.id === d.repoId)?.name ?? 'Unknown';
-              return (
+            {repoDiagrams.map((d) => (
               <div
                 key={d.id}
                 onClick={() => onOpenDiagram(d.id)}
@@ -295,12 +293,15 @@ const Dashboard: FC<DashboardProps> = ({
                 className="group flex cursor-pointer items-center gap-4 rounded-lg px-2 py-3 transition-colors hover:bg-gray-800/40"
               >
                 {/* Name */}
-                <span className="flex-[2] truncate text-[13px] font-medium text-gray-200">
-                  {repoName}
+                <span className="flex-[2] truncate text-[13px] font-medium text-gray-200 flex items-center gap-2">
+                  {d.deepResearch && (
+                    <Icon icon="lucide:scan-search" width={14} className="shrink-0 text-purple-400" title="Deep Research" />
+                  )}
+                  {d.name}
                 </span>
                 {/* Tool */}
                 <span className="flex-[1] truncate text-[12px] text-gray-500">
-                  —
+                  {toolLabel(d.tool)}
                 </span>
                 {/* Created */}
                 <span className="flex-[1] text-[12px] text-gray-600">
@@ -317,8 +318,7 @@ const Dashboard: FC<DashboardProps> = ({
                   </button>
                 </div>
               </div>
-              );
-            })}
+            ))}
           </div>
         )}
       </ScrollArea>

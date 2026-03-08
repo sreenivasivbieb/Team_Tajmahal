@@ -2,7 +2,7 @@
 // api/client.ts — Typed API client for the contextplus-backed backend
 // ---------------------------------------------------------------------------
 
-import type { CallChainResponse, DiagramSpec, NodeDetail, QueryDecision, TextResult } from '../types/graph';
+import type { CallChainResponse, DiagramSpec, SequenceDiagramSpec, ERDiagramSpec, NodeDetail, QueryDecision, TextResult } from '../types/graph';
 
 const BASE = '/api';
 
@@ -152,5 +152,30 @@ export const api = {
   /** Edit an existing diagram — modifies in-place without regenerating from scratch. */
   editDiagram(existingSpec: DiagramSpec, editPrompt: string): Promise<DiagramSpec> {
     return post<DiagramSpec>('/edit-diagram', { existing_spec: existingSpec, edit_prompt: editPrompt });
+  },
+
+  // ---- Deep Research API ------------------------------------------------
+
+  /** Start a deep research analysis for a repository. */
+  deepResearchStart(repositoryUrl: string): Promise<{ analysis_id: string }> {
+    return post<{ analysis_id: string }>('/deep-research/start', { repository_url: repositoryUrl });
+  },
+
+  /** Poll the status of a deep research analysis. */
+  deepResearchStatus(analysisId: string): Promise<{ status: string }> {
+    return request<{ status: string }>(`/deep-research/status/${analysisId}`);
+  },
+
+  /** Fetch the completed deep research report. */
+  deepResearchReport(analysisId: string): Promise<{ report: string }> {
+    return request<{ report: string }>(`/deep-research/report/${analysisId}`);
+  },
+
+  /** Generate 3 diagrams from a deep research report (architecture, sequence, ER). */
+  deepResearchDiagrams(report: string, repoName: string): Promise<{
+    diagrams: { architecture?: DiagramSpec; sequence?: SequenceDiagramSpec; er?: ERDiagramSpec };
+    errors: Record<string, string>;
+  }> {
+    return post('/deep-research/generate-diagrams', { report, repo_name: repoName });
   },
 };

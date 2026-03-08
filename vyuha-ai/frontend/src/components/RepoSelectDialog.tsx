@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Icon } from '@iconify/react';
 import type { RepoEntry } from '../types/workspace';
+import AuroraText from './ui/aurora-text';
 
 interface RepoSelectDialogProps {
   open: boolean;
@@ -28,6 +29,10 @@ interface RepoSelectDialogProps {
   iconColor?: string;
   onSkipRepo?: () => void;
   skipLabel?: string;
+  /** Show a Deep Research toggle checkbox */
+  showDeepResearch?: boolean;
+  deepResearchChecked?: boolean;
+  onDeepResearchChange?: (checked: boolean) => void;
 }
 
 const RepoSelectDialog: FC<RepoSelectDialogProps> = ({
@@ -42,6 +47,9 @@ const RepoSelectDialog: FC<RepoSelectDialogProps> = ({
   iconColor,
   onSkipRepo,
   skipLabel,
+  showDeepResearch,
+  deepResearchChecked,
+  onDeepResearchChange,
 }) => {
   const [search, setSearch] = useState('');
 
@@ -133,8 +141,36 @@ const RepoSelectDialog: FC<RepoSelectDialogProps> = ({
           )}
         </ScrollArea>
 
-        {/* Skip repo / Add new repo buttons */}
+        {/* Deep Research toggle + Skip repo / Add new repo buttons */}
         <div className="border-t border-gray-800 pt-3 flex flex-col gap-1">
+          {showDeepResearch && (
+            <button
+              type="button"
+              onClick={() => onDeepResearchChange?.(!deepResearchChecked)}
+              className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-all duration-200 ${
+                deepResearchChecked
+                  ? 'border border-purple-500/30 bg-purple-500/10 shadow-md shadow-purple-500/10'
+                  : 'border border-transparent hover:bg-white/[0.04]'
+              }`}
+            >
+              <div
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all ${
+                  deepResearchChecked
+                    ? 'border-purple-400 bg-purple-500/30'
+                    : 'border-gray-600 bg-white/[0.04]'
+                }`}
+              >
+                {deepResearchChecked && (
+                  <Icon icon="lucide:check" width={12} className="text-purple-300" />
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Icon icon="lucide:scan-search" width={16} className="text-purple-400" />
+                <AuroraText className="text-sm font-semibold">Deep Research</AuroraText>
+              </div>
+              <span className="ml-auto text-[10px] text-gray-600">5–20 min</span>
+            </button>
+          )}
           {onSkipRepo && (
             <Button
               variant="ghost"

@@ -66,6 +66,8 @@ export default {
         landingFadeIn: 'landingFadeIn 0.8s ease-out forwards',
         landingFadeOut: 'landingFadeOut 0.6s ease-in forwards',
         appFadeIn: 'appFadeIn 0.6s ease-out forwards',
+        'aurora-shift': 'aurora-shift 4s ease-in-out infinite',
+        'deep-research-pulse': 'deep-research-pulse 2s ease-in-out infinite',
       },
       keyframes: {
         slideInRight: {
@@ -103,6 +105,14 @@ export default {
         appFadeIn: {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
+        },
+        'aurora-shift': {
+          '0%, 100%': { backgroundPosition: '0% 50%' },
+          '50%': { backgroundPosition: '100% 50%' },
+        },
+        'deep-research-pulse': {
+          '0%, 100%': { opacity: '0.4', transform: 'scale(1)' },
+          '50%': { opacity: '0.8', transform: 'scale(1.05)' },
         },
       },
     },

@@ -179,6 +179,72 @@ export interface DiagramSpec {
   edges: DiagramEdge[];
 }
 
+// ---- Sequence Diagram types ---------------------------------------------
+
+export interface SeqActor {
+  id: string;
+  label: string;
+  type: 'actor' | 'service' | 'database' | 'external';
+  color?: string;
+}
+
+export interface SeqMessage {
+  id: string;
+  from: string;
+  to: string;
+  label: string;
+  type: 'sync' | 'async' | 'reply' | 'create' | 'destroy';
+  order: number;
+}
+
+export interface SeqFragment {
+  id: string;
+  type: 'alt' | 'opt' | 'loop' | 'par';
+  label: string;
+  startOrder: number;
+  endOrder: number;
+}
+
+export interface SequenceDiagramSpec {
+  title: string;
+  actors: SeqActor[];
+  messages: SeqMessage[];
+  fragments?: SeqFragment[];
+}
+
+// ---- Entity-Relationship Diagram types ----------------------------------
+
+export interface ERAttribute {
+  name: string;
+  type: string;
+  pk?: boolean;
+  fk?: boolean;
+  nullable?: boolean;
+}
+
+export interface EREntity {
+  id: string;
+  name: string;
+  type: 'strong' | 'weak' | 'associative';
+  color?: string;
+  attributes: ERAttribute[];
+}
+
+export interface ERRelationship {
+  id: string;
+  from: string;
+  to: string;
+  label: string;
+  cardinality: '1:1' | '1:N' | 'N:1' | 'M:N';
+  style?: 'solid' | 'dashed';
+}
+
+export interface ERDiagramSpec {
+  title: string;
+  entities: EREntity[];
+  relationships: ERRelationship[];
+}
+
 export const TOOLS: ToolInfo[] = [
   { key: 'ask-ai',            label: '✦ Ask AI',        placeholder: 'Ask anything about the codebase…',   requiresInput: true  },
   { key: 'call-chain',        label: 'Call Chain',       placeholder: 'Symbol name (e.g. handleRequest)',  requiresInput: true  },

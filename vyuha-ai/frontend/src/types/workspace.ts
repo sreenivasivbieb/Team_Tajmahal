@@ -16,6 +16,8 @@ export interface RepoEntry {
   ready: boolean;
   /** Number of symbols indexed (optional, filled after scan) */
   symbolCount?: number;
+  /** Original GitHub URL (if cloned from GitHub) */
+  githubUrl?: string;
 }
 
 /** A saved diagram / query session the user pinned. */
@@ -37,6 +39,15 @@ export interface SavedDiagram {
   nodes?: unknown[];
   /** Serialised ReactFlow edges (persisted for re-opening) */
   edges?: unknown[];
+  /** Whether this was generated via Deep Research mode */
+  deepResearch?: boolean;
+  /** Persisted deep research data for re-opening */
+  deepResearchData?: {
+    report: string;
+    sequenceSpec?: unknown;
+    erSpec?: unknown;
+    archSpec?: unknown;
+  };
 }
 
 /** The top-level state stored in localStorage. */

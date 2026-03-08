@@ -375,17 +375,53 @@ const elk = new ELK();
 async function buildDiagramFromSpec(
   spec: DiagramSpec,
 ): Promise<{ rfNodes: RFNode[]; rfEdges: RFEdge[] }> {
-  const groupMap = new Map(spec.groups.map((g) => [g.id, g]));
+  // --- Sanitize IDs to prevent collisions that cause parentNode cycles ------
+  // Reserve "__boundary__" for our wrapper node. Namespace group IDs vs node IDs
+  // so the LLM can't accidentally create a node with the same ID as a group.
+  const RESERVED = new Set(['__boundary__', 'root']);
+  const groupIds = new Set(spec.groups.map((g) => g.id));
+  const nodeIds = new Set(spec.nodes.map((n) => n.id));
+  const collisions = new Set([...groupIds].filter((gid) => nodeIds.has(gid)));
+
+  // Build ID remap tables: prefix duplicates & reserved names
+  const groupIdMap = new Map<string, string>();
+  for (const g of spec.groups) {
+    let id = g.id;
+    if (RESERVED.has(id)) id = `grp_${id}`;
+    else if (collisions.has(g.id)) id = `grp_${id}`;
+    groupIdMap.set(g.id, id);
+  }
+  const nodeIdMap = new Map<string, string>();
+  const usedNodeIds = new Set<string>();
+  for (const n of spec.nodes) {
+    let id = n.id;
+    if (RESERVED.has(id)) id = `nd_${id}`;
+    else if (collisions.has(n.id)) id = `nd_${id}`;
+    // Deduplicate — if two nodes share an ID, suffix the second
+    while (usedNodeIds.has(id)) id = `${id}_dup`;
+    usedNodeIds.add(id);
+    nodeIdMap.set(n.id, id);
+  }
+
+  // Remap edges
+  const remappedEdges = spec.edges.map((e) => ({
+    ...e,
+    source: nodeIdMap.get(e.source) ?? e.source,
+    target: nodeIdMap.get(e.target) ?? e.target,
+  }));
+
+  const groupMap = new Map(spec.groups.map((g) => [groupIdMap.get(g.id)!, g]));
   const grouped = new Map<string, DiagNode[]>();
   const ungrouped: DiagNode[] = [];
 
   for (const n of spec.nodes) {
-    if (n.group && groupMap.has(n.group)) {
-      const arr = grouped.get(n.group) || [];
-      arr.push(n);
-      grouped.set(n.group, arr);
+    const remappedGroup = n.group ? groupIdMap.get(n.group) : undefined;
+    if (remappedGroup && groupMap.has(remappedGroup)) {
+      const arr = grouped.get(remappedGroup) || [];
+      arr.push({ ...n, id: nodeIdMap.get(n.id)!, group: remappedGroup });
+      grouped.set(remappedGroup, arr);
     } else {
-      ungrouped.push(n);
+      ungrouped.push({ ...n, id: nodeIdMap.get(n.id)! });
     }
   }
 
@@ -394,10 +430,11 @@ async function buildDiagramFromSpec(
   const innerChildren: ElkNode[] = [];
 
   for (const group of spec.groups) {
-    const kids = grouped.get(group.id) || [];
+    const gid = groupIdMap.get(group.id)!;
+    const kids = grouped.get(gid) || [];
     if (kids.length === 0) continue;
     innerChildren.push({
-      id: group.id,
+      id: gid,
       layoutOptions: {
         'elk.padding': `[top=${GROUP_PAD_TOP},left=${GROUP_PAD},bottom=${GROUP_PAD},right=${GROUP_PAD}]`,
         'elk.algorithm': 'layered',
@@ -421,12 +458,12 @@ async function buildDiagramFromSpec(
     });
   }
 
-  const allNodeIds = new Set(spec.nodes.map((n) => n.id));
-  const elkEdges = spec.edges
+  const allRemappedNodeIds = new Set([...nodeIdMap.values()]);
+  const elkEdges = remappedEdges
     .filter(
       (e) =>
-        allNodeIds.has(e.source) &&
-        allNodeIds.has(e.target) &&
+        allRemappedNodeIds.has(e.source) &&
+        allRemappedNodeIds.has(e.target) &&
         e.source !== e.target,
     )
     .map((e, i) => ({
@@ -439,7 +476,7 @@ async function buildDiagramFromSpec(
   // If there are many groups, arrange them in a grid-like fashion (DOWN)
   // so they stack vertically instead of stretching horizontally.
   const groupCount = innerChildren.filter((c) =>
-    spec.groups.some((g) => g.id === c.id),
+    spec.groups.some((g) => groupIdMap.get(g.id) === c.id),
   ).length;
   const boundaryDirection = groupCount > 3 ? 'DOWN' : 'RIGHT';
 
@@ -481,7 +518,11 @@ async function buildDiagramFromSpec(
 
   // ---- Map ELK results → React Flow nodes --------------------------------
   const rfNodes: RFNode[] = [];
-  const nodeMap = new Map(spec.nodes.map((n) => [n.id, n]));
+  // Build a lookup from remapped node ID → original node data
+  const nodeMap = new Map<string, DiagNode>();
+  for (const n of spec.nodes) {
+    nodeMap.set(nodeIdMap.get(n.id)!, n);
+  }
 
   // Find the boundary node in the ELK result
   const elkBoundary = (layoutResult.children ?? []).find(
@@ -555,8 +596,8 @@ async function buildDiagramFromSpec(
   }
 
   // ---- Map edges → React Flow edges --------------------------------------
-  const rfEdges: RFEdge[] = spec.edges
-    .filter((e) => allNodeIds.has(e.source) && allNodeIds.has(e.target))
+  const rfEdges: RFEdge[] = remappedEdges
+    .filter((e) => allRemappedNodeIds.has(e.source) && allRemappedNodeIds.has(e.target))
     .map((e, i) => ({
       id: `edge-${i}`,
       source: e.source,
@@ -585,6 +626,25 @@ async function buildDiagramFromSpec(
         color: '#475569',
       },
     }));
+
+  // ---- Safety net: detect & break parentNode cycles -----------------------
+  const nodeById = new Map(rfNodes.map((n) => [n.id, n]));
+  for (const node of rfNodes) {
+    if (!node.parentNode) continue;
+    const visited = new Set<string>();
+    let cur: string | undefined = node.id;
+    while (cur) {
+      if (visited.has(cur)) {
+        // Cycle detected — break it by removing parentNode from this node
+        console.warn(`[buildDiagramFromSpec] Cycle detected at node "${node.id}", removing parentNode`);
+        delete node.parentNode;
+        delete (node as Record<string, unknown>).extent;
+        break;
+      }
+      visited.add(cur);
+      cur = nodeById.get(cur)?.parentNode;
+    }
+  }
 
   return { rfNodes, rfEdges };
 }
@@ -769,7 +829,6 @@ const AIDiagramViewInner: FC<AIDiagramViewProps> = ({
         await buildDiagramFromSpec(spec);
       setRfNodes(nodes);
       setRfEdges(edges);
-      setDiagramKey((k) => k + 1);
       setEditPrompt('');
       setEditOpen(false);
       setTimeout(() => fitView({ padding: 0.15, duration: 500 }), 250);

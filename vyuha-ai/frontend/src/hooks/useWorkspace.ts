@@ -39,7 +39,7 @@ export interface UseWorkspaceReturn {
   activeDiagram: SavedDiagram | null;
 
   /** Add a new repo and set it active. Returns the new entry. */
-  addRepo: (name: string, path: string) => RepoEntry;
+  addRepo: (name: string, path: string, githubUrl?: string) => RepoEntry;
 
   /** Mark a repo scan as complete. */
   markRepoReady: (repoId: string, symbolCount?: number) => void;
@@ -51,7 +51,7 @@ export interface UseWorkspaceReturn {
   setActiveRepo: (repoId: string | null) => void;
 
   /** Save a diagram entry. */
-  saveDiagram: (repoId: string, name: string, tool: string, query: string, nodes?: unknown[], edges?: unknown[]) => SavedDiagram;
+  saveDiagram: (repoId: string, name: string, tool: string, query: string, nodes?: unknown[], edges?: unknown[], deepResearch?: boolean, deepResearchData?: SavedDiagram['deepResearchData']) => SavedDiagram;
 
   /** Remove a diagram. */
   removeDiagram: (diagramId: string) => void;
@@ -76,13 +76,14 @@ export function useWorkspace(): UseWorkspaceReturn {
 
   // ---- Repos ---------------------------------------------------------------
 
-  const addRepo = useCallback((name: string, path: string): RepoEntry => {
+  const addRepo = useCallback((name: string, path: string, githubUrl?: string): RepoEntry => {
     const entry: RepoEntry = {
       id: generateId(),
       name,
       path,
       scannedAt: new Date().toISOString(),
       ready: false,
+      githubUrl,
     };
     setState((prev) => ({
       ...prev,
@@ -128,7 +129,7 @@ export function useWorkspace(): UseWorkspaceReturn {
   // ---- Diagrams ------------------------------------------------------------
 
   const saveDiagram = useCallback(
-    (repoId: string, name: string, tool: string, query: string, nodes?: unknown[], edges?: unknown[]): SavedDiagram => {
+    (repoId: string, name: string, tool: string, query: string, nodes?: unknown[], edges?: unknown[], deepResearch?: boolean, deepResearchData?: SavedDiagram['deepResearchData']): SavedDiagram => {
       const entry: SavedDiagram = {
         id: generateId(),
         repoId,
@@ -139,6 +140,8 @@ export function useWorkspace(): UseWorkspaceReturn {
         editedAt: new Date().toISOString(),
         nodes,
         edges,
+        deepResearch,
+        deepResearchData,
       };
       setState((prev) => ({
         ...prev,

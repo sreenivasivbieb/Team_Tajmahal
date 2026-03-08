@@ -59,6 +59,12 @@ func (s *Server) RegisterRoutes() {
 	s.mux.HandleFunc("POST /api/context-tree-architecture", s.handleContextTreeArchitecture)
 	s.mux.HandleFunc("POST /api/edit-diagram", s.handleEditDiagram)
 
+	// -- Deep Research endpoints ------------------------------------------
+	s.mux.HandleFunc("POST /api/deep-research/start", s.handleDeepResearchStart)
+	s.mux.HandleFunc("GET /api/deep-research/status/{analysisId}", s.handleDeepResearchStatus)
+	s.mux.HandleFunc("GET /api/deep-research/report/{analysisId}", s.handleDeepResearchReport)
+	s.mux.HandleFunc("POST /api/deep-research/generate-diagrams", s.handleDeepResearchDiagrams)
+
 	// -- SSE event stream -------------------------------------------------
 	s.mux.HandleFunc("GET /api/events", s.handleSSE)
 

@@ -937,3 +937,430 @@ func (s *Server) handleEditDiagram(w http.ResponseWriter, r *http.Request) {
 		"data": diagram,
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Deep Research — EC2-hosted codebase analysis API proxy
+// ---------------------------------------------------------------------------
+
+func deepResearchBaseURL() string {
+	return getEnvDefault("DEEP_RESEARCH_BASE_URL", "http://107.21.71.139:8000/api/v1")
+}
+
+func deepResearchAPIKey() string {
+	return os.Getenv("DEEP_RESEARCH_API_KEY")
+}
+
+// POST /api/deep-research/start — start a codebase analysis
+type deepResearchStartRequest struct {
+	RepositoryURL string `json:"repository_url"`
+}
+
+func (s *Server) handleDeepResearchStart(w http.ResponseWriter, r *http.Request) {
+	var req deepResearchStartRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", "invalid request body")
+		return
+	}
+	if req.RepositoryURL == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_URL", "repository_url is required")
+		return
+	}
+
+	apiKey := deepResearchAPIKey()
+	if apiKey == "" {
+		writeError(w, http.StatusInternalServerError, "NO_API_KEY", "DEEP_RESEARCH_API_KEY is not configured")
+		return
+	}
+
+	s.sse.Broadcast(SSEEvent{
+		Event: "tool_start",
+		Data:  map[string]string{"tool": "deep_research", "url": req.RepositoryURL},
+	})
+
+	body, _ := json.Marshal(map[string]string{"repository_url": req.RepositoryURL})
+	httpReq, err := http.NewRequestWithContext(r.Context(), "POST", deepResearchBaseURL()+"/analyze", bytes.NewReader(body))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "REQUEST_ERROR", err.Error())
+		return
+	}
+	httpReq.Header.Set("X-API-Key", apiKey)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		s.sse.Broadcast(SSEEvent{Event: "tool_error", Data: map[string]string{"tool": "deep_research", "error": err.Error()}})
+		writeError(w, http.StatusBadGateway, "API_ERROR", "Deep Research API unreachable: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		writeError(w, resp.StatusCode, "API_ERROR", "Deep Research API error: "+string(respBody))
+		return
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		writeError(w, http.StatusInternalServerError, "PARSE_ERROR", "Failed to parse API response")
+		return
+	}
+
+	slog.Info("deep_research started", "analysis_id", result["analysis_id"], "full_response", string(respBody))
+	writeJSON(w, http.StatusOK, map[string]interface{}{"data": result})
+}
+
+// GET /api/deep-research/status/{analysisId} — poll analysis status
+func (s *Server) handleDeepResearchStatus(w http.ResponseWriter, r *http.Request) {
+	analysisId := r.PathValue("analysisId")
+	if analysisId == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_ID", "analysis_id is required")
+		return
+	}
+
+	apiKey := deepResearchAPIKey()
+	if apiKey == "" {
+		writeError(w, http.StatusInternalServerError, "NO_API_KEY", "DEEP_RESEARCH_API_KEY is not configured")
+		return
+	}
+
+	httpReq, err := http.NewRequestWithContext(r.Context(), "GET", deepResearchBaseURL()+"/status/"+analysisId, nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "REQUEST_ERROR", err.Error())
+		return
+	}
+	httpReq.Header.Set("X-API-Key", apiKey)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "API_ERROR", "Deep Research API unreachable: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	var result map[string]interface{}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		writeError(w, http.StatusInternalServerError, "PARSE_ERROR", "Failed to parse status response")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"data": result})
+}
+
+// GET /api/deep-research/report/{analysisId} — fetch completed report
+func (s *Server) handleDeepResearchReport(w http.ResponseWriter, r *http.Request) {
+	analysisId := r.PathValue("analysisId")
+	if analysisId == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_ID", "analysis_id is required")
+		return
+	}
+
+	apiKey := deepResearchAPIKey()
+	if apiKey == "" {
+		writeError(w, http.StatusInternalServerError, "NO_API_KEY", "DEEP_RESEARCH_API_KEY is not configured")
+		return
+	}
+
+	httpReq, err := http.NewRequestWithContext(r.Context(), "GET", deepResearchBaseURL()+"/report/"+analysisId, nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "REQUEST_ERROR", err.Error())
+		return
+	}
+	httpReq.Header.Set("X-API-Key", apiKey)
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "API_ERROR", "Deep Research API unreachable: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	var result map[string]interface{}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		writeError(w, http.StatusInternalServerError, "PARSE_ERROR", "Failed to parse report response")
+		return
+	}
+
+	s.sse.Broadcast(SSEEvent{
+		Event: "tool_done",
+		Data:  map[string]string{"tool": "deep_research"},
+	})
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"data": result})
+}
+
+// POST /api/deep-research/generate-diagrams — generate 3 diagrams from a deep research report
+type deepResearchDiagramsRequest struct {
+	Report   string `json:"report"`
+	RepoName string `json:"repo_name"`
+}
+
+func (s *Server) handleDeepResearchDiagrams(w http.ResponseWriter, r *http.Request) {
+	var req deepResearchDiagramsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", "invalid request body")
+		return
+	}
+	if req.Report == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_REPORT", "report is required")
+		return
+	}
+
+	s.sse.Broadcast(SSEEvent{
+		Event: "tool_start",
+		Data:  map[string]string{"tool": "deep_research_diagrams"},
+	})
+
+	// Truncate report for LLM if very large
+	reportForLLM := req.Report
+	if len(reportForLLM) > 12000 {
+		reportForLLM = reportForLLM[:12000] + "\n... (truncated)"
+	}
+
+	type diagramResult struct {
+		Key  string
+		Spec map[string]interface{}
+		Err  error
+	}
+
+	results := make(chan diagramResult, 3)
+
+	// 1. Architectural diagram
+	go func() {
+		prompt := fmt.Sprintf("Based on this detailed codebase analysis report, generate a comprehensive architecture diagram:\n\n%s\n\nCreate a detailed diagram showing ALL major components, services, modules, data stores, and their relationships. Be thorough — use 15-30 nodes.", reportForLLM)
+		resp, err := callLLM(r.Context(), llmRequest{
+			SystemPrompt: diagramSystemPrompt,
+			UserPrompt:   prompt,
+			Temperature:  0.7,
+			MaxTokens:    4096,
+			JSONMode:     true,
+		})
+		if err != nil {
+			results <- diagramResult{Key: "architecture", Err: err}
+			return
+		}
+		content := strings.TrimSpace(resp.Content)
+		content = strings.TrimPrefix(content, "```json")
+		content = strings.TrimPrefix(content, "```")
+		content = strings.TrimSuffix(content, "```")
+		content = strings.TrimSpace(content)
+		var spec map[string]interface{}
+		if err := json.Unmarshal([]byte(content), &spec); err != nil {
+			results <- diagramResult{Key: "architecture", Err: fmt.Errorf("invalid JSON: %w", err)}
+			return
+		}
+		results <- diagramResult{Key: "architecture", Spec: spec}
+	}()
+
+	// 2. Sequence (UML) diagram
+	go func() {
+		seqSystemPrompt := `You are an expert UML sequence diagram generator. Given an analysis report, generate a SEQUENCE DIAGRAM specification as a JSON object.
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "title": "Sequence Diagram Title",
+  "actors": [
+    {
+      "id": "unique_actor_id",
+      "label": "Actor/Service Name",
+      "type": "actor|service|database|external",
+      "color": "#hex_color"
+    }
+  ],
+  "messages": [
+    {
+      "id": "msg_1",
+      "from": "source_actor_id",
+      "to": "target_actor_id",
+      "label": "Message description",
+      "type": "sync|async|reply|create|destroy",
+      "order": 1
+    }
+  ],
+  "fragments": [
+    {
+      "id": "frag_1",
+      "type": "alt|opt|loop|par",
+      "label": "condition or description",
+      "startOrder": 2,
+      "endOrder": 5
+    }
+  ]
+}
+
+ACTOR TYPES:
+- "actor": Human user or external client (stick figure)
+- "service": Internal service or module
+- "database": Data store (cylinder shape)
+- "external": External system or API
+
+MESSAGE TYPES:
+- "sync": Solid arrow → synchronous call
+- "async": Open arrowhead → asynchronous call
+- "reply": Dashed arrow ← return/response
+- "create": Dashed arrow → object creation
+- "destroy": Arrow with X → destruction
+
+RULES:
+- Generate 4-8 actors representing the key services/components from the analysis
+- Generate 10-25 messages showing the main request/response flows
+- Messages MUST be ordered sequentially (order: 1, 2, 3, ...)
+- Every reply should follow its corresponding request
+- Include both the main success flow AND at least one error/alternative flow
+- Use specific labels: "POST /api/login" is better than "request"
+- Actor IDs must be referenced in from/to fields of messages
+- Fragments are optional — use them for conditional or looping logic
+- Return ONLY the JSON, no markdown, no code fences`
+
+		seqPrompt := fmt.Sprintf("Based on this detailed codebase analysis report, generate a comprehensive UML sequence diagram showing the main request/response flows through the system:\n\n%s\n\nFocus on the PRIMARY user-facing flows: authentication, main data operations, and key integrations. Show 4-8 actors and 10-25 messages.", reportForLLM)
+
+		resp, err := callLLM(r.Context(), llmRequest{
+			SystemPrompt: seqSystemPrompt,
+			UserPrompt:   seqPrompt,
+			Temperature:  0.7,
+			MaxTokens:    4096,
+			JSONMode:     true,
+		})
+		if err != nil {
+			results <- diagramResult{Key: "sequence", Err: err}
+			return
+		}
+		content := strings.TrimSpace(resp.Content)
+		content = strings.TrimPrefix(content, "```json")
+		content = strings.TrimPrefix(content, "```")
+		content = strings.TrimSuffix(content, "```")
+		content = strings.TrimSpace(content)
+		var spec map[string]interface{}
+		if err := json.Unmarshal([]byte(content), &spec); err != nil {
+			results <- diagramResult{Key: "sequence", Err: fmt.Errorf("invalid JSON: %w", err)}
+			return
+		}
+		results <- diagramResult{Key: "sequence", Spec: spec}
+	}()
+
+	// 3. E-R Diagram
+	go func() {
+		erSystemPrompt := `You are an expert Entity-Relationship diagram generator. Given an analysis report, generate an E-R diagram specification as a JSON object.
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "title": "E-R Diagram Title",
+  "entities": [
+    {
+      "id": "unique_entity_id",
+      "name": "EntityName",
+      "type": "strong|weak|associative",
+      "color": "#hex_color",
+      "attributes": [
+        {
+          "name": "attribute_name",
+          "type": "string|integer|boolean|date|float|text|uuid|json",
+          "pk": true,
+          "fk": false,
+          "nullable": false
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "rel_1",
+      "from": "source_entity_id",
+      "to": "target_entity_id",
+      "label": "relationship verb (e.g. has, belongs_to, contains)",
+      "cardinality": "1:1|1:N|N:1|M:N",
+      "style": "solid|dashed"
+    }
+  ]
+}
+
+ENTITY TYPES:
+- "strong": Regular entity with a primary key
+- "weak": Entity that depends on another entity
+- "associative": Junction table for M:N relationships
+
+COLORS for entities (use translucent dark-theme colors):
+- User/Auth domain: "#7C3AED" (purple)
+- Core business: "#2563EB" (blue)
+- Data/Storage: "#0891B2" (cyan)
+- External/Integration: "#D97706" (amber)
+- System/Config: "#4B5563" (gray)
+
+ATTRIBUTE RULES:
+- List 3-8 attributes per entity (most important ones)
+- Always mark the primary key with "pk": true
+- Mark foreign keys with "fk": true
+- Common attributes: id (pk), name, email, created_at, updated_at, status, type
+- Use accurate SQL-like types: string, integer, boolean, date, float, text, uuid, json
+
+RELATIONSHIP RULES:
+- Every entity must have at least one relationship
+- Use "1:N" for one-to-many (e.g. User has many Orders)
+- Use "M:N" for many-to-many (usually through an associative entity)
+- Use "1:1" for one-to-one
+- Use "dashed" style for optional/nullable relationships
+- Label should be a verb: "has", "belongs_to", "contains", "references", "manages"
+
+RULES:
+- Generate 6-20 entities covering all major data models found in the analysis
+- Every entity needs at least 3 attributes
+- Primary keys are required for all strong entities
+- Include foreign key attributes that correspond to relationships
+- Return ONLY the JSON, no markdown, no code fences`
+
+		erPrompt := fmt.Sprintf("Based on this detailed codebase analysis report, generate a comprehensive Entity-Relationship diagram showing all the data models, their attributes, and relationships:\n\n%s\n\nFocus on the PRIMARY data entities: users, main business objects, configuration, and their relationships. Include all attributes found in the code.", reportForLLM)
+
+		resp, err := callLLM(r.Context(), llmRequest{
+			SystemPrompt: erSystemPrompt,
+			UserPrompt:   erPrompt,
+			Temperature:  0.7,
+			MaxTokens:    4096,
+			JSONMode:     true,
+		})
+		if err != nil {
+			results <- diagramResult{Key: "er", Err: err}
+			return
+		}
+		content := strings.TrimSpace(resp.Content)
+		content = strings.TrimPrefix(content, "```json")
+		content = strings.TrimPrefix(content, "```")
+		content = strings.TrimSuffix(content, "```")
+		content = strings.TrimSpace(content)
+		var spec map[string]interface{}
+		if err := json.Unmarshal([]byte(content), &spec); err != nil {
+			results <- diagramResult{Key: "er", Err: fmt.Errorf("invalid JSON: %w", err)}
+			return
+		}
+		results <- diagramResult{Key: "er", Spec: spec}
+	}()
+
+	// Collect all 3 results
+	diagrams := make(map[string]interface{})
+	errors := make(map[string]string)
+	for i := 0; i < 3; i++ {
+		res := <-results
+		if res.Err != nil {
+			errors[res.Key] = res.Err.Error()
+			slog.Warn("deep research diagram generation failed", "type", res.Key, "error", res.Err)
+		} else {
+			diagrams[res.Key] = res.Spec
+		}
+	}
+
+	s.sse.Broadcast(SSEEvent{
+		Event: "tool_done",
+		Data:  map[string]string{"tool": "deep_research_diagrams"},
+	})
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"data": map[string]interface{}{
+			"diagrams": diagrams,
+			"errors":   errors,
+		},
+	})
+}
